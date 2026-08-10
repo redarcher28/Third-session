@@ -1,0 +1,37 @@
+[
+  {
+    "id": "n1",
+    "question": "地中海饮食对心血管风险有什么证据？",
+    "track": "nutrition",
+    "must_cite": true,
+    "gold_points": ["地中海", "心血管", "饮食"]
+  },
+  {
+    "id": "n2",
+    "question": "限钠饮食对高血压是否真的有帮助？",
+    "track": "nutrition",
+    "must_cite": true,
+    "gold_points": ["钠", "血压", "高血压"]
+  },
+  {
+    "id": "n3",
+    "question": "血脂高的人日常吃什么更有证据支持？",
+    "track": "nutrition",
+    "must_cite": true,
+    "gold_points": ["血脂", "饮食", "脂肪"]
+  },
+  {
+    "id": "n4",
+    "question": "有糖尿病的人，饮食上怎样做才有研究依据？",
+    "track": "nutrition",
+    "must_cite": true,
+    "gold_points": ["糖尿病", "饮食"]
+  },
+  {
+    "id": "n5",
+    "question": "我想少吃盐降血压，大概有哪些靠谱建议？",
+    "track": "nutrition",
+    "must_cite": true,
+    "gold_points": ["盐", "钠", "血压"]
+  }
+]
