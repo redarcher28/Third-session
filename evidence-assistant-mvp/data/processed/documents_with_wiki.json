@@ -1,0 +1,260 @@
+[
+  {
+    "doc_id": "local:seed-htn-guideline",
+    "source": "local",
+    "title": "高血压长期药物治疗的循证要点（样例摘要）",
+    "text": "高血压是慢性病，多数患者需要长期甚至终身药物治疗以持续控制血压并降低心脑血管事件风险。指南普遍建议：确诊高血压后，在生活方式干预基础上，根据血压水平与合并症选择降压药；达到目标血压后通常需维持治疗，擅自停药可能导致血压反弹与事件风险上升。生活方式干预包括限盐、减重、规律运动、限制饮酒等，可增强药效或减少用药剂量，但多数中高危患者仍需药物维持。证据来源包括大型结局试验与国内外高血压管理指南摘要。",
+    "year": 2023,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "guideline",
+      "cardiovascular"
+    ],
+    "evidence_level": "guideline",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:seed-lipid-lifestyle-drug",
+    "source": "local",
+    "title": "血脂异常：生活方式与药物治疗证据对比（样例）",
+    "text": "体检发现血脂偏高时，指南通常首先评估总体心血管风险。生活方式干预（减少饱和脂肪与反式脂肪、增加膳食纤维、减重、运动）可改善LDL-C与甘油三酯，对低危人群可作为一线措施。中高危或LDL-C显著升高者，他汀类药物有明确的心血管结局获益证据，可显著降低主要不良心血管事件。生活方式与药物并非互斥：即使启动药物，仍应坚持饮食与运动干预。是否用药需结合风险分层与医患共同决策，本摘要不作个体处方。",
+    "year": 2022,
+    "url": "",
+    "tags": [
+      "hyperlipidemia",
+      "diet",
+      "guideline",
+      "cardiovascular"
+    ],
+    "evidence_level": "guideline",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:seed-mediterranean",
+    "source": "local",
+    "title": "地中海饮食与心血管风险：证据摘要（样例）",
+    "text": "地中海饮食强调橄榄油、坚果、蔬菜水果、全谷物、鱼类，限制红肉与加工食品。多项随机对照试验与荟萃分析显示，坚持地中海饮食模式与较低的心血管事件风险相关，尤其在已有高危因素的人群中。机制可能包括改善血脂谱、血压、炎症与内皮功能。证据强度整体优于单一营养素补充。个体效果受依从性与基线饮食影响，不能替代必要的药物治疗。",
+    "year": 2021,
+    "url": "",
+    "tags": [
+      "mediterranean",
+      "diet",
+      "cardiovascular",
+      "meta"
+    ],
+    "evidence_level": "meta",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:seed-sodium",
+    "source": "local",
+    "title": "限钠饮食对高血压的作用（样例证据摘要）",
+    "text": "系统评价与临床试验表明，减少膳食钠摄入可降低收缩压与舒张压，对高血压患者及血压正常偏高者均有益，效应呈剂量相关。常见建议为每日钠摄入控制在一定范围内（具体数值以当地指南为准），同时注意整体饮食质量。限钠常与DASH或地中海饮食模式结合效果更好。极度限盐需关注特殊人群（如某些肾病）的个体化评估。",
+    "year": 2020,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "diet",
+      "guideline"
+    ],
+    "evidence_level": "meta",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:seed-diabetes-diet",
+    "source": "local",
+    "title": "2型糖尿病饮食干预与心血管风险（样例）",
+    "text": "饮食模式干预是2型糖尿病管理的基础。减少精制碳水、控制总能量、选择优质脂肪与高纤维食物有助于改善血糖与体重。部分研究显示结构化营养干预可降低心血管危险因素。药物（包括降糖与降脂/降压）在中高危患者中仍关键。营养建议应个体化，并强调可持续性与低血糖风险防范。",
+    "year": 2022,
+    "url": "",
+    "tags": [
+      "diabetes",
+      "diet",
+      "cardiovascular"
+    ],
+    "evidence_level": "guideline",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:seed-dash",
+    "source": "local",
+    "title": "DASH饮食模式与血压（样例）",
+    "text": "DASH（Dietary Approaches to Stop Hypertension）饮食富含蔬果、低脂乳制品、全谷物，限制饱和脂肪与甜食。临床试验证实DASH可显著降低血压，与限钠联用时降压幅度更大。该模式也被用于血脂与代谢健康的综合管理。",
+    "year": 2019,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "diet",
+      "rct"
+    ],
+    "evidence_level": "rct",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "local:md:sodium_bp_note",
+    "source": "local",
+    "title": "sodium_bp_note",
+    "text": "# 本地样例：限盐与血压（可替换为公开指南摘要）\n\n减少膳食钠摄入是高血压生活方式干预的核心措施之一。\n\n多项随机对照与荟萃分析显示，限钠可降低收缩压与舒张压；与 DASH 饮食联合时，降压效应往往更大。\n\n实施建议（科普层面）：逐步减少加工食品与外卖中的隐性盐；烹饪时少放盐；关注营养标签中的钠含量。\n\n特殊人群（如某些肾脏疾病）需在医生指导下个体化调整，不可极端限盐。\n\n本文件仅作知识库样例，不构成诊疗建议。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "local"
+    ],
+    "evidence_level": "ebook",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:hypertension-long-term-meds",
+    "source": "wiki",
+    "title": "高血压患者为什么需要长期服药",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "guideline",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:lipid-lifestyle-vs-drugs",
+    "source": "wiki",
+    "title": "血脂偏高：生活方式干预与药物治疗的证据",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "hyperlipidemia",
+      "diet",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:mediterranean-diet-cvd",
+    "source": "wiki",
+    "title": "地中海饮食与心血管风险",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "mediterranean",
+      "diet",
+      "cardiovascular",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:sodium-hypertension",
+    "source": "wiki",
+    "title": "限钠饮食对高血压的帮助",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "diet",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:diabetes-diet",
+    "source": "wiki",
+    "title": "糖尿病饮食干预与心血管风险",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "diabetes",
+      "diet",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:dash-diet",
+    "source": "wiki",
+    "title": "DASH饮食与血压管理",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "hypertension",
+      "diet",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:statin-evidence",
+    "source": "wiki",
+    "title": "他汀类药物降低心血管事件的证据要点",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "hyperlipidemia",
+      "cardiovascular",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  },
+  {
+    "doc_id": "wiki:lifestyle-first",
+    "source": "wiki",
+    "title": "三高管理中的生活方式干预总览",
+    "text": "# 主题摘要（离线占位）\n\n本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n",
+    "year": null,
+    "url": "",
+    "tags": [
+      "diet",
+      "hypertension",
+      "hyperlipidemia",
+      "diabetes",
+      "wiki"
+    ],
+    "evidence_level": "wiki",
+    "journal": "",
+    "doi": "",
+    "extra": {}
+  }
+]
