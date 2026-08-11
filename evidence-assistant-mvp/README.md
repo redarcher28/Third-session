@@ -22,6 +22,10 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 
 共用底座：PubMed / ClinicalTrials.gov / Europe PMC / 本地种子摘要 → 切分 → Chroma → 混合检索 → 带引用生成。
 
+主前端使用 Open WebUI，但 RAG 的唯一事实来源仍是本项目后端：Open WebUI 只负责聊天、
+模型选择和 Markdown/SSE 渲染；`/v1/chat/completions` 内部会继续执行查询改写、A 组
+知识库混合检索、基于检索证据的生成和引用校验。
+
 ## 快速开始
 
 ```bash
@@ -117,6 +121,31 @@ Open WebUI 是主前端；本项目只提供 B 组范围内的 OpenAI-compatible
 回答。两条赛道共用同一条后端链路：`query reformulation → 混合检索 → grounded
 synthesis → citation validation`。差异由系统预置 Prompt 和赛道配置控制，前端不重复
 实现业务逻辑。
+
+`BYPASS_EMBEDDING_AND_RETRIEVAL=true` 只关闭 Open WebUI 自己的重复 Embedding/RAG；它
+不会关闭本项目的 `HybridRetriever`。这样一次提问只经过一条可追踪的 RAG 链路，回答
+末尾的“证据来源”会把 `[n]` 映射回本次检索到的标题、证据等级、年份和原文链接。
+
+```mermaid
+flowchart LR
+  UI["Open WebUI"] --> API["/v1/chat/completions"]
+  API --> ASK["ask(track)"]
+  ASK --> Q["查询改写"]
+  Q --> R["Chroma + BM25 + 证据加权/重排"]
+  R --> G["Grounded synthesis\n只依据检索证据"]
+  G --> V["引用校验与安全后处理"]
+  V --> UI
+```
+
+没有配置有效 `LLM_API_KEY` 时，检索、引用映射和校验仍会真实运行，但生成文本是离线
+占位回答；正式演示需要在项目 `.env` 中配置可用的 OpenAI-compatible LLM。
+
+RAG 数据流契约测试：
+
+```bash
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python -m unittest -v tests.test_rag_contract
+```
 
 本次 B 组前后端实现记录见：[docs/统一助手实现记录.md](docs/统一助手实现记录.md)。
 
