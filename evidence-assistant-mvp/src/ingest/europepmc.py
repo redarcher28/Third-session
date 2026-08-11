@@ -11,7 +11,7 @@ import logging
 
 import httpx
 
-from src.ingest import normalize_evidence_level
+from src.ingest import IngestRun, normalize_evidence_level, start_ingest_run
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -32,66 +32,49 @@ def _tags(text: str) -> list[str]:
     return [t for t, keys in mapping.items() if any(k.lower() in lower for k in keys)]
 
 
-def search_europepmc(query: str, page_size: int = 15) -> list[EvidenceDoc]:
-    """
-    单查询检索 Europe PMC。
-
-    参数:
-        query: 检索词。
-        page_size: 返回条数。
-
-    返回:
-        list[EvidenceDoc]: 文献摘要列表。
-    """
-    params = {
-        "query": query,
-        "format": "json",
-        "pageSize": page_size,
-        "resultType": "core",
-    }
+def search_europepmc(query: str, page_size: int = 15, *, run: IngestRun | None = None) -> list[EvidenceDoc]:
+    """Search Europe PMC and optionally retain the successful JSON response."""
+    params = {"query": query, "format": "json", "pageSize": page_size, "resultType": "core"}
     with httpx.Client(timeout=60) as client:
-        r = client.get(API, params=params)
-        r.raise_for_status()
-        payload = r.json()
+        response = client.get(API, params=params)
+        response.raise_for_status()
+        raw_path = run.save_response(response.content, "json") if run else ""
+        payload = response.json()
+
     results = payload.get("resultList", {}).get("result", []) or []
     docs: list[EvidenceDoc] = []
     for item in results:
-        source = item.get("source", "MED")
+        record_source = item.get("source", "MED")
         ext_id = item.get("id") or item.get("pmid") or item.get("doi") or ""
         title = item.get("title") or ""
         abstract = item.get("abstractText") or title
         year = item.get("pubYear")
         year_i = int(year) if year and str(year).isdigit() else None
         pmid = item.get("pmid")
-        url = (
-            f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-            if pmid
-            else f"https://europepmc.org/article/{source}/{ext_id}"
-        )
-        doc_id = f"epmc:{source}:{ext_id}"
-        level = normalize_evidence_level(item.get("pubType") or "", title)
-        blob = f"{title} {abstract}"
-        docs.append(
-            EvidenceDoc(
-                doc_id=doc_id,
-                source="europepmc",
-                title=title,
-                text=abstract[:8000],
-                year=year_i,
-                url=url,
-                tags=_tags(blob),
-                evidence_level=level,  # type: ignore[arg-type]
-                journal=item.get("journalTitle") or "",
-                doi=item.get("doi") or "",
-                extra={
-                    "isOpenAccess": item.get("isOpenAccess") or "",
-                    "inPMC": item.get("inPMC") or "",
-                    "pubType": item.get("pubType") or "",
-                },
-            )
-        )
+        europepmc_url = f"https://europepmc.org/article/{record_source}/{ext_id}"
+        url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else europepmc_url
+        is_open_access = str(item.get("isOpenAccess") or "").upper() == "Y"
+        provenance = {}
+        if run is not None:
+            provenance = {
+                "run_id": run.run_id,
+                "source": "europepmc",
+                "query": query,
+                "open_access": is_open_access,
+                "europepmc_url": europepmc_url,
+                "retrieved_at": run.started_at,
+                "raw_response_path": raw_path,
+            }
+        docs.append(EvidenceDoc(
+            doc_id=f"epmc:{record_source}:{ext_id}", source="europepmc", title=title,
+            text=abstract[:8000], year=year_i, url=url, tags=_tags(f"{title} {abstract}"),
+            evidence_level=normalize_evidence_level(item.get("pubType") or "", title),
+            journal=item.get("journalTitle") or "", doi=item.get("doi") or "",
+            citation_eligible=True, record_type="published_evidence",
+            source_locator=f"Europe PMC:{record_source}:{ext_id}", provenance=provenance,
+            extra={"isOpenAccess": item.get("isOpenAccess") or "", "inPMC": item.get("inPMC") or "", "pubType": item.get("pubType") or ""},
+        ))
     return docs
-
 
 DEFAULT_QUERIES = [
     "hypertension guidelines open access",
@@ -101,32 +84,34 @@ DEFAULT_QUERIES = [
 ]
 
 
-def ingest_europepmc(
-    queries: list[str] | None = None,
-    page_size: int = 12,
-) -> list[EvidenceDoc]:
-    """
-    多查询批量采集 Europe PMC。
-
-    参数:
-        queries: 查询列表；None 用默认查询。
-        page_size: 每查询条数。
-
-    返回:
-        list[EvidenceDoc]: 采集结果。
-    """
+def ingest_europepmc(queries: list[str] | None = None, page_size: int = 12) -> list[EvidenceDoc]:
+    """Batch-ingest Europe PMC while retaining raw query responses."""
     queries = queries or DEFAULT_QUERIES
-    out: list[EvidenceDoc] = []
     try:
-        for q in queries:
-            docs = filter_open_access_only(search_europepmc(q, page_size=page_size))
-            logger.info("EuropePMC query=%r -> %d (after OA filter)", q, len(docs))
-            out.extend(docs)
-    except Exception as e:
-        logger.warning("EuropePMC fetch failed: %s", e)
+        run = start_ingest_run("europepmc", queries, {"page_size": page_size})
+    except Exception as exc:
+        logger.warning("EuropePMC run initialization failed: %s", exc)
         return []
-    return out
 
+    docs: list[EvidenceDoc] = []
+    try:
+        for query in queries:
+            try:
+                query_docs = filter_open_access_only(search_europepmc(query, page_size=page_size, run=run))
+            except Exception as exc:
+                message = f"source=europepmc query={query!r} {type(exc).__name__}: {exc}"
+                run.errors.append(message)
+                logger.warning("EuropePMC query failed: %s", message)
+                continue
+            logger.info("EuropePMC query=%r -> %d (after OA filter)", query, len(query_docs))
+            docs.extend(query_docs)
+    except Exception as exc:
+        message = f"source=europepmc {type(exc).__name__}: {exc}"
+        run.errors.append(message)
+        logger.warning("EuropePMC fetch failed: %s", message)
+    finally:
+        run.finalize(docs)
+    return docs
 
 # ---------------------------------------------------------------------------
 # Europe PMC 开放获取过滤

@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from src.config import get_settings
-from src.ingest import normalize_evidence_level
+from src.ingest import IngestRun, normalize_evidence_level, start_ingest_run
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -34,26 +34,15 @@ def _params(**extra: Any) -> dict[str, Any]:
     return p
 
 
-def search_pmids(query: str, retmax: int = 20) -> list[str]:
-    """
-    使用 esearch 按关键词检索 PMID 列表。
-
-    参数:
-        query: PubMed 检索式。
-        retmax: 最多返回条数。
-
-    返回:
-        list[str]: PMID 字符串列表。
-    """
+def search_pmids(query: str, retmax: int = 20, *, run: IngestRun | None = None) -> list[str]:
+    """Search PubMed and optionally retain the successful ESearch response."""
     with httpx.Client(timeout=60) as client:
-        r = client.get(
-            f"{EUTILS}/esearch.fcgi",
-            params=_params(db="pubmed", term=query, retmax=retmax, retmode="json"),
-        )
-        r.raise_for_status()
-        ids = r.json().get("esearchresult", {}).get("idlist", [])
-        return list(ids)
-
+        response = client.get(f"{EUTILS}/esearch.fcgi", params=_params(db="pubmed", term=query, retmax=retmax, retmode="json"))
+        response.raise_for_status()
+        if run is not None:
+            run.save_response(response.content, "json")
+        ids = response.json().get("esearchresult", {}).get("idlist", [])
+    return list(ids)
 
 def _text(el: ET.Element | None, path: str = "") -> str:
     if el is None:
@@ -64,75 +53,53 @@ def _text(el: ET.Element | None, path: str = "") -> str:
     return "".join(node.itertext()).strip()
 
 
-def fetch_pubmed_docs(pmids: list[str]) -> list[EvidenceDoc]:
-    """
-    使用 efetch 批量拉取文献摘要并转为 EvidenceDoc。
-
-    参数:
-        pmids: PMID 列表。
-
-    返回:
-        list[EvidenceDoc]: 含标题、摘要、年份、链接等字段的文档。
-    """
+def fetch_pubmed_docs(pmids: list[str], *, run: IngestRun | None = None) -> list[EvidenceDoc]:
+    """Fetch PubMed records in batches, retaining each successful EFetch XML."""
     if not pmids:
         return []
     docs: list[EvidenceDoc] = []
-    # Batch efetch
+    pmid_queries: dict[str, list[str]] = getattr(run, "pmid_queries", {})
     with httpx.Client(timeout=90) as client:
         for i in range(0, len(pmids), 50):
             batch = pmids[i : i + 50]
-            r = client.get(
-                f"{EUTILS}/efetch.fcgi",
-                params=_params(
-                    db="pubmed",
-                    id=",".join(batch),
-                    retmode="xml",
-                ),
-            )
-            r.raise_for_status()
-            root = ET.fromstring(r.text)
+            try:
+                response = client.get(f"{EUTILS}/efetch.fcgi", params=_params(db="pubmed", id=",".join(batch), retmode="xml"))
+                response.raise_for_status()
+                raw_path = run.save_response(response.content, "xml") if run else ""
+                root = ET.fromstring(response.content)
+            except Exception as exc:
+                message = f"source=pubmed batch={batch!r} {type(exc).__name__}: {exc}"
+                if run is not None:
+                    run.errors.append(message)
+                logger.warning("PubMed EFetch batch failed: %s", message)
+                continue
             for article in root.findall(".//PubmedArticle"):
                 pmid = _text(article, ".//PMID")
                 title = _text(article, ".//ArticleTitle")
-                abstract_parts = [
-                    "".join(n.itertext()).strip()
-                    for n in article.findall(".//Abstract/AbstractText")
-                ]
-                abstract = "\n".join(p for p in abstract_parts if p)
-                year_txt = _text(article, ".//PubDate/Year") or _text(
-                    article, ".//PubDate/MedlineDate"
-                )[:4]
-                year = int(year_txt) if year_txt.isdigit() else None
+                abstract_parts = ["".join(node.itertext()).strip() for node in article.findall(".//Abstract/AbstractText")]
+                abstract = "\n".join(part for part in abstract_parts if part)
+                year_text = _text(article, ".//PubDate/Year") or _text(article, ".//PubDate/MedlineDate")[:4]
+                year = int(year_text) if year_text.isdigit() else None
                 journal = _text(article, ".//Journal/Title")
                 doi = ""
-                for aid in article.findall(".//ArticleId"):
-                    if aid.get("IdType") == "doi":
-                        doi = (aid.text or "").strip()
-                pub_types = [
-                    "".join(pt.itertext()).strip()
-                    for pt in article.findall(".//PublicationType")
-                ]
+                for article_id in article.findall(".//ArticleId"):
+                    if article_id.get("IdType") == "doi":
+                        doi = (article_id.text or "").strip()
+                pub_types = ["".join(pub_type.itertext()).strip() for pub_type in article.findall(".//PublicationType")]
                 if not abstract:
                     abstract = title
-                tags = _tags_from_text(f"{title} {abstract}")
-                docs.append(
-                    EvidenceDoc(
-                        doc_id=f"pmid:{pmid}",
-                        source="pubmed",
-                        title=title or f"PMID {pmid}",
-                        text=abstract,
-                        year=year,
-                        url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                        tags=tags,
-                        evidence_level=normalize_evidence_level(" ".join(pub_types), title),
-                        journal=journal,
-                        doi=doi,
-                        extra={"pub_types": pub_types},
-                    )
-                )
-            time.sleep(0.34)  # be polite to NCBI
+                provenance = {}
+                if run is not None:
+                    provenance = {"run_id": run.run_id, "source": "pubmed", "pmid": pmid, "doi": doi,
+                                  "article_types": pub_types, "queries": list(pmid_queries.get(pmid, [])),
+                                  "retrieved_at": run.started_at, "raw_response_paths": [raw_path]}
+                docs.append(EvidenceDoc(doc_id=f"pmid:{pmid}", source="pubmed", title=title or f"PMID {pmid}",
+                    text=abstract, year=year, url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/", tags=_tags_from_text(f"{title} {abstract}"),
+                    evidence_level=normalize_evidence_level(" ".join(pub_types), title), journal=journal, doi=doi,
+                    citation_eligible=True, record_type="published_evidence", source_locator=f"PMID:{pmid}",
+                    provenance=provenance, extra={"pub_types": pub_types}))
+            time.sleep(0.34)
     return docs
-
 
 def _tags_from_text(text: str) -> list[str]:
     mapping = {
@@ -162,45 +129,48 @@ DEFAULT_PICO = [
 ]
 
 
-def ingest_pubmed(
-    queries: list[str] | None = None,
-    retmax_per_query: int = 15,
-) -> list[EvidenceDoc]:
-    """
-    按默认/自定义查询批量采集 PubMed 文献。
-
-    参数:
-        queries: 检索式列表；None 时由 DEFAULT_PICO 用 build_mesh_aware_query 生成。
-        retmax_per_query: 每个查询最多拉取条数。
-
-    返回:
-        list[EvidenceDoc]: 去重前的原始采集结果（上层可再 merge）。
-    """
+def ingest_pubmed(queries: list[str] | None = None, retmax_per_query: int = 15) -> list[EvidenceDoc]:
+    """Batch-ingest PubMed records while retaining searchable raw responses."""
     queries = queries or [build_mesh_aware_query(**p) for p in DEFAULT_PICO]
-    all_ids: list[str] = []
-    for q in queries:
-        try:
-            ids = search_pmids(q, retmax=retmax_per_query)
-            logger.info("PubMed query=%r -> %d ids", q, len(ids))
-            all_ids.extend(ids)
-            time.sleep(0.34)
-        except Exception as e:
-            # 单条检索失败不应丢掉整批已成功的 PMID，网络抖动时可继续保留权威文献来源。
-            logger.warning("PubMed query failed query=%r error=%s", q, e)
-            continue
-    # unique preserve order
-    seen: set[str] = set()
-    uniq = []
-    for i in all_ids:
-        if i not in seen:
-            seen.add(i)
-            uniq.append(i)
     try:
-        return fetch_pubmed_docs(uniq)
-    except Exception as e:
-        logger.warning("PubMed efetch failed: %s", e)
+        run = start_ingest_run("pubmed", queries, {"retmax_per_query": retmax_per_query})
+    except Exception as exc:
+        logger.warning("PubMed run initialization failed: %s", exc)
         return []
-
+    docs: list[EvidenceDoc] = []
+    all_ids: list[str] = []
+    pmid_queries: dict[str, list[str]] = {}
+    setattr(run, "pmid_queries", pmid_queries)
+    try:
+        for query in queries:
+            try:
+                ids = search_pmids(query, retmax=retmax_per_query, run=run)
+            except Exception as exc:
+                message = f"source=pubmed query={query!r} {type(exc).__name__}: {exc}"
+                run.errors.append(message)
+                logger.warning("PubMed search failed: %s", message)
+                continue
+            logger.info("PubMed query=%r -> %d ids", query, len(ids))
+            for pmid in ids:
+                all_ids.append(pmid)
+                matched_queries = pmid_queries.setdefault(pmid, [])
+                if query not in matched_queries:
+                    matched_queries.append(query)
+            time.sleep(0.34)
+        seen: set[str] = set()
+        unique_pmids = []
+        for pmid in all_ids:
+            if pmid not in seen:
+                seen.add(pmid)
+                unique_pmids.append(pmid)
+        docs.extend(fetch_pubmed_docs(unique_pmids, run=run))
+    except Exception as exc:
+        message = f"source=pubmed {type(exc).__name__}: {exc}"
+        run.errors.append(message)
+        logger.warning("PubMed live fetch failed: %s", message)
+    finally:
+        run.finalize(docs)
+    return docs
 
 # ---------------------------------------------------------------------------
 # PubMed 采集增强

@@ -1,289 +1,148 @@
-# -*- coding: utf-8 -*-
-"""
-采集层公共工具：读写与合并 EvidenceDoc。
-
-文末「待完善」签名供队员在本模块内补实现。
-"""
-
 from __future__ import annotations
 
 import json
 import re
+import uuid
 from collections import Counter
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from src import PROJECT_ROOT
 from src.models import EvidenceDoc, EvidenceLevel
 
+@dataclass
+class IngestRun:
+    run_id: str
+    source: str
+    queries: list[str]
+    request_params: dict
+    started_at: str
+    directory: Path
+    raw_files: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+
+    def save_response(self, content: str | bytes, suffix: str) -> str:
+        path = self.directory / f"response-{len(self.raw_files) + 1:03d}.{suffix.lstrip('.')}"
+        if isinstance(content, bytes):
+            path.write_bytes(content)
+        else:
+            path.write_text(content, encoding="utf-8")
+        self.raw_files.append(path.resolve().relative_to(PROJECT_ROOT.resolve()).as_posix())
+        return self.raw_files[-1]
+
+    def finalize(self, normalized_docs: list[EvidenceDoc]) -> Path:
+        manifest = {"run_id": self.run_id, "source": self.source, "queries": self.queries,
+                    "request_params": self.request_params, "started_at": self.started_at,
+                    "finished_at": datetime.now(timezone.utc).isoformat(), "raw_files": self.raw_files,
+                    "raw_response_count": len(self.raw_files), "normalized_document_count": len(normalized_docs),
+                    "errors": self.errors}
+        path = self.directory / "manifest.json"
+        path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path
+
+def start_ingest_run(source: str, queries: list[str], request_params: dict) -> IngestRun:
+    from src.config import get_settings
+    now = datetime.now(timezone.utc)
+    run_id = f"{now:%Y%m%dT%H%M%SZ}-{uuid.uuid4().hex[:8]}"
+    directory = get_settings().raw_path / source / run_id
+    directory.mkdir(parents=True, exist_ok=False)
+    return IngestRun(run_id, source, list(queries), dict(request_params), now.isoformat(), directory)
 
 def save_docs(docs: Iterable[EvidenceDoc], path: Path) -> int:
-    """
-    将证据文档列表保存为 JSON 文件。
-
-    参数:
-        docs: 可迭代的 EvidenceDoc。
-        path: 输出文件路径。
-
-    返回:
-        int: 实际写入条数。
-    """
     path.parent.mkdir(parents=True, exist_ok=True)
     items = [d.model_dump() for d in docs]
     path.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
     return len(items)
 
-
 def load_docs(path: Path) -> list[EvidenceDoc]:
-    """
-    从 JSON 文件加载证据文档。
-
-    参数:
-        path: JSON 路径。
-
-    返回:
-        list[EvidenceDoc]: 文档列表；文件不存在时返回空列表。
-    """
-    if not path.exists():
-        return []
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    return [EvidenceDoc.model_validate(x) for x in raw]
-
+    if not path.exists(): return []
+    return [EvidenceDoc.model_validate(x) for x in json.loads(path.read_text(encoding="utf-8"))]
 
 def merge_docs(*doc_lists: list[EvidenceDoc]) -> list[EvidenceDoc]:
-    """
-    按 doc_id 去重合并多组文档（先出现者优先保留）。
-
-    参数:
-        *doc_lists: 多组 EvidenceDoc 列表。
-
-    返回:
-        list[EvidenceDoc]: 合并结果。
-    """
-    seen: set[str] = set()
-    out: list[EvidenceDoc] = []
+    seen, out = set(), []
     for docs in doc_lists:
-        for d in docs:
-            if d.doc_id in seen:
-                continue
-            seen.add(d.doc_id)
-            out.append(d)
+        for doc in docs:
+            if doc.doc_id not in seen:
+                seen.add(doc.doc_id); out.append(doc)
     return out
 
-
-# ---------------------------------------------------------------------------
-# 采集质量与规范化
-# ---------------------------------------------------------------------------
-
-
 def normalize_evidence_level(raw_type: str, title: str) -> EvidenceLevel:
-    """
-    根据原始文献类型与标题，推断统一证据等级。
-
-    参数:
-        raw_type: 数据源返回的原始类型字符串（如 PublicationType、pubType）。
-        title: 文献标题，用于关键词兜底判断。
-
-    返回:
-        EvidenceLevel: 取值为 rct / meta / guideline / observational / ebook / wiki / other。
-
-    作用:
-        让不同数据源的证据等级口径一致，供检索加权与临床展示使用。
-    """
     blob = f"{raw_type} {title}".lower()
-    if any(k in blob for k in ("guideline", "practice guideline", "指南", "consensus")):
-        return "guideline"
-    if any(k in blob for k in ("meta-analysis", "meta analysis", "systematic review", "荟萃")):
-        return "meta"
-    if any(k in blob for k in ("randomized", "randomised", "clinical trial", "controlled trial", "随机")):
-        return "rct"
-    if any(k in blob for k in ("cohort", "observational", "case-control", "cross-sectional", "case series", "case report")):
-        return "observational"
-    if any(k in blob for k in ("book", "ebook", "chapter", "手册")):
-        return "ebook"
-    if any(k in blob for k in ("wiki", "维基")):
-        return "wiki"
+    if any(k in blob for k in ("guideline", "practice guideline", "consensus")): return "guideline"
+    if any(k in blob for k in ("meta-analysis", "meta analysis", "systematic review")): return "meta"
+    if any(k in blob for k in ("randomized", "randomised", "clinical trial", "controlled trial")): return "rct"
+    if any(k in blob for k in ("cohort", "observational", "case-control", "cross-sectional", "case series", "case report")): return "observational"
+    if any(k in blob for k in ("book", "ebook", "chapter")): return "ebook"
+    if "wiki" in blob: return "wiki"
     return "other"
 
-
 def _norm_doi(doi: str) -> str:
-    """DOI 归一化：去前缀、小写、去空白，用于跨源比对。"""
-    d = doi.strip().lower()
+    value = doi.strip().lower()
     for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
-        if d.startswith(prefix):
-            d = d[len(prefix):]
-    return d.strip()
-
+        if value.startswith(prefix): value = value[len(prefix):]
+    return value.strip()
 
 def _norm_title(title: str) -> str:
-    """标题归一化：小写、去冠词、去标点、压缩空白，用于标题级比对。"""
-    t = re.sub(r"^(the|a|an)\s+", "", title.lower().strip())
-    t = re.sub(r"\s+", " ", t)
-    return re.sub(r"[^\w\u4e00-\u9fff]+", "", t)
+    return re.sub(r"[^\\w\\u4e00-\\u9fff]+", "", re.sub(r"\\s+", " ", title.lower()).strip())
 
+def _completeness(doc: EvidenceDoc) -> int:
+    return (len((doc.text or "").strip()) + 1000 * bool(doc.year) + 500 * bool(doc.url) +
+            500 * bool(doc.journal) + 300 * bool(doc.doi) + 100 * len(doc.tags))
 
-def _completeness(d: EvidenceDoc) -> int:
-    """信息完整度：正文越长、元数据越全，得分越高，去重时保留高分者。"""
-    score = len((d.text or "").strip())
-    if d.year:
-        score += 1000
-    if d.url:
-        score += 500
-    if d.journal:
-        score += 500
-    if d.doi:
-        score += 300
-    score += len(d.tags) * 100
-    return score
-
-
-def _merge_fields(keep: EvidenceDoc, other: EvidenceDoc) -> EvidenceDoc:
-    """
-    把 other 的非空字段融合进 keep（取并集，优先 keep 的既有值）。
-
-    优化点：去重不再「二选一丢信息」，而是保留完整度高的同时，
-    把被丢弃文档的 url/journal/year/doi/正文/tags/extra 补进胜出文档。
-    """
-    if not keep.url and other.url:
-        keep.url = other.url
-    if not keep.journal and other.journal:
-        keep.journal = other.journal
-    if not keep.doi and other.doi:
-        keep.doi = other.doi
-    if keep.year is None and other.year is not None:
-        keep.year = other.year
-    if not (keep.text or "").strip() and (other.text or "").strip():
-        keep.text = other.text
-    for t in other.tags:
-        if t not in keep.tags:
-            keep.tags.append(t)
-    for k, v in (other.extra or {}).items():
-        if v and k not in (keep.extra or {}):
-            keep.extra[k] = v
-    return keep
-
+def dedupe_with_stats(docs: list[EvidenceDoc]) -> tuple[list[EvidenceDoc], dict]:
+    parent = list(range(len(docs))); links: list[tuple[int, int, str]] = []
+    def find(i: int) -> int:
+        while parent[i] != i: parent[i], i = parent[parent[i]], parent[i]
+        return i
+    def join(a: int, b: int, reason: str) -> None:
+        left, right = find(a), find(b)
+        if left != right: parent[right] = left
+        links.append((a, b, reason))
+    by_doi: dict[str, int] = {}; by_title: dict[str, int] = {}
+    for i, doc in enumerate(docs):
+        if doc.record_type == "trial_registration": continue
+        doi, title = _norm_doi(doc.doi), _norm_title(doc.title)
+        if doi:
+            if doi in by_doi: join(by_doi[doi], i, "normalized_doi")
+            else: by_doi[doi] = i
+        if title:
+            if title in by_title: join(by_title[title], i, "normalized_title")
+            else: by_title[title] = i
+    groups: dict[int, list[int]] = {}
+    for i in range(len(docs)): groups.setdefault(find(i), []).append(i)
+    result: list[EvidenceDoc] = []; reasons: Counter[str] = Counter()
+    for indices in sorted(groups.values(), key=min):
+        best_i = max(indices, key=lambda i: _completeness(docs[i])); best = docs[best_i].model_copy(deep=True)
+        if len(indices) > 1:
+            records = list(best.provenance.get("merged_records", []))
+            for i in indices:
+                if i == best_i: continue
+                why = sorted({reason for a,b,reason in links if i in (a,b) or best_i in (a,b)}) or ["transitive_doi_or_title"]
+                reasons.update(why); other = docs[i]
+                records.append({"source": other.source, "doc_id": other.doc_id, "dedupe_reason": why, "provenance": other.provenance})
+            best.provenance["merged_records"] = records
+        result.append(best)
+    return result, {"before_count": len(docs), "after_count": len(result), "deduped_count": len(docs)-len(result), "reasons": dict(reasons)}
 
 def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
-    """
-    按 DOI 优先、其次标题归一化，对证据文档强去重。
+    return dedupe_with_stats(docs)[0]
 
-    优化点：
-        - 标题归一化额外剥离 the/a/an 冠词，跨源标题更易对齐；
-        - 去重胜出文档会融合被丢弃文档的非空字段（url/journal/year/DOI/tags），
-          「保留信息更完整的一条」从二选一升级为取并集。
-
-    参数:
-        docs: 合并后的证据文档列表。
-
-    返回:
-        list[EvidenceDoc]: 去重后的文档列表（保留信息更完整的一条）。
-
-    作用:
-        减少同一文献多源重复进入知识库，降低检索噪声。
-    """
-    seen: dict[str, EvidenceDoc] = {}
-    for d in docs:
-        if d.doi:
-            key = f"doi:{_norm_doi(d.doi)}"
-        else:
-            key = f"title:{_norm_title(d.title)}"
-        if key in ("doi:", "title:"):  # 无有效 DOI/标题，不参与去重
-            key = f"id:{d.doc_id}"
-        prev = seen.get(key)
-        if prev is None:
-            seen[key] = d
-        elif _completeness(d) > _completeness(prev):
-            seen[key] = _merge_fields(d, prev)  # 新文档胜出，融合旧文档字段
-        else:
-            seen[key] = _merge_fields(prev, d)  # 旧文档胜出，融合新文档字段
-    return list(seen.values())
-
-
-def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
-    """
-    导出采集质量报告（来源分布、年份分布、缺摘要比例等）。
-
-    参数:
-        docs: 已采集文档列表。
-        out_path: 报告输出路径（建议 md 或 json）。
-
-    返回:
-        Path: 实际写入的文件路径。
-
-    作用:
-        方便演示与报告中说明「数据从哪来、质量如何」。
-    """
-    total = len(docs)
-    sources = Counter(d.source for d in docs)
-    years = Counter(d.year for d in docs)
-    levels = Counter(d.evidence_level for d in docs)
-    tags = Counter(t for d in docs for t in d.tags)
-    no_text = [d.doc_id for d in docs if not (d.text or "").strip()]
-    no_year = sum(1 for d in docs if d.year is None)
-    with_doi = sum(1 for d in docs if d.doi)
-
-    def pct(n: int) -> str:
-        return f"{n / total * 100:.1f}%" if total else "0.0%"
-
-    known_years = [y for y in years if y is not None]
-    year_range = (
-        f"{min(known_years)} ~ {max(known_years)}" if known_years else "未知"
-    )
-
-    lines = [
-        "# 采集质量报告",
-        "",
-        f"- 生成时间: {datetime.now():%Y-%m-%d %H:%M}",
-        f"- 文档总数: {total}",
-        f"- 数据源数: {len(sources)}",
-        f"- 年份覆盖: {year_range}",
-        f"- 缺摘要比例: {len(no_text)}/{total} ({pct(len(no_text))})",
-        f"- 缺年份比例: {no_year}/{total} ({pct(no_year)})",
-        f"- DOI 覆盖率: {with_doi}/{total} ({pct(with_doi)})",
-        "",
-        "## 来源分布",
-        "",
-        "| 来源 | 条数 | 占比 |",
-        "|---|---|---|",
-    ]
-    lines += [f"| {s} | {n} | {pct(n)} |" for s, n in sources.most_common()]
-    lines += [
-        "",
-        "## 年份分布",
-        "",
-        "| 年份 | 条数 | 占比 |",
-        "|---|---|---|",
-    ]
-    lines += [
-        f"| {y if y is not None else '未知'} | {n} | {pct(n)} |"
-        for y, n in sorted(years.items(), key=lambda kv: (kv[0] is None, kv[0]))
-    ]
-    lines += [
-        "",
-        "## 证据等级分布",
-        "",
-        "| 等级 | 条数 | 占比 |",
-        "|---|---|---|",
-    ]
-    lines += [
-        f"| {lv} | {n} | {pct(n)} |" for lv, n in levels.most_common()
-    ]
-    lines += [
-        "",
-        "## 标签分布（Top 10）",
-        "",
-        "| 标签 | 条数 | 占比 |",
-        "|---|---|---|",
-    ]
-    lines += [
-        f"| {t} | {n} | {pct(n)} |" for t, n in tags.most_common(10)
-    ]
-    if no_text:
-        lines += ["", "## 缺摘要文档", ""]
-        lines += [f"- {doc_id}" for doc_id in no_text[:20]]
-        if len(no_text) > 20:
-            lines.append(f"- …（共 {len(no_text)} 条）")
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+def export_ingest_report(docs: list[EvidenceDoc], out_path: Path, *, dedupe_stats: dict | None = None) -> Path:
+    total = len(docs); sources = Counter(d.source for d in docs); levels = Counter(d.evidence_level for d in docs)
+    record_types = Counter(d.record_type for d in docs); years = Counter(d.year for d in docs)
+    stats = dedupe_stats or {"before_count": total, "deduped_count": 0, "reasons": {}}
+    def section(name: str, counter: Counter) -> list[str]:
+        return ["", f"## {name}", ""] + [f"- {k if k is not None else 'unknown'}: {v}" for k,v in sorted(counter.items(), key=lambda x: str(x[0]))]
+    lines = ["# Ingest quality report", "", f"- generated_at: {datetime.now():%Y-%m-%d %H:%M}", f"- documents_total: {total}",
+             f"- before_dedupe: {stats['before_count']}", f"- deduped: {stats['deduped_count']}",
+             f"- missing_url_or_source_locator: {sum(not (d.url or d.source_locator) for d in docs)}",
+             f"- missing_abstract: {sum(not (d.text or '').strip() for d in docs)}", f"- missing_identifier: {sum(not (d.doi or d.doc_id) for d in docs)}",
+             f"- teaching_samples: {sum(d.record_type == 'teaching_sample' for d in docs)}",
+             f"- clinicaltrials_registrations: {sum(d.record_type == 'trial_registration' for d in docs)}",
+             f"- citation_eligible_false: {sum(not d.citation_eligible for d in docs)}"]
+    lines += section("Source distribution", sources) + section("Evidence level distribution", levels) + section("Record type distribution", record_types) + section("Year distribution", years)
+    lines += ["", "## Dedupe reasons", ""] + ([f"- {k}: {v}" for k,v in stats["reasons"].items()] or ["- none"])
+    out_path.parent.mkdir(parents=True, exist_ok=True); out_path.write_text("\\n".join(lines)+"\\n", encoding="utf-8")
     return out_path
