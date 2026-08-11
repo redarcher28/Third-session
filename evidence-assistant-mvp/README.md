@@ -47,9 +47,9 @@ cp .env.example .env
 bash scripts/start_openwebui.sh
 ```
 
-浏览器打开 [http://127.0.0.1:8080/](http://127.0.0.1:8080/)，然后点击证据台 Banner
-中的“模型连接设置”，或直接打开 [http://127.0.0.1:8000/settings](http://127.0.0.1:8000/settings)。
-在那里填写 API Base URL、API Key、模型名和协议，保存后立即生效，不需要编辑 `.env`。
+浏览器打开 [http://127.0.0.1:8080/](http://127.0.0.1:8080/)，进入用户菜单的
+“设置 → 通用”，在“证据模型连接”卡片中填写 API Base URL、API Key、模型名和协议，
+保存后立即生效，不需要编辑 `.env`。`/settings` 仍保留为不依赖 Open WebUI 设置弹窗的备用页。
 
 如果希望使用文件配置，也可以编辑 `.env`，按 ByeAPI 的 OpenAI Responses 接口填写：
 
@@ -152,8 +152,8 @@ conda run --no-capture-output -n open_webui \
 bash scripts/start_openwebui.sh
 
 # 浏览器打开 http://127.0.0.1:8080/
-# Open WebUI 证据台 Banner 中有“模型连接设置”链接；也可以直接打开
-# http://127.0.0.1:8000/settings 配置 API Base URL、API Key、模型名和协议。
+# 打开 Open WebUI → 设置 → 通用 → 证据模型连接配置 API Base URL、API Key、模型名和协议。
+# 备用页：http://127.0.0.1:8000/settings
 # 首次启动会自动合并证据台 Banner、两条赛道示例问题，并隐藏无关的 Arena Model；
 # 只合并带项目标记的配置，保留现有 Open WebUI 账号的其他设置。
 
@@ -188,7 +188,10 @@ synthesis → citation validation`。差异由系统预置 Prompt 和赛道配�
 
 Open WebUI 的项目化信息通过 [`scripts/configure_openwebui.py`](scripts/configure_openwebui.py)
 合并：旧证据台的“双赛道纪律”、示例问题和“先看证据，再形成答案”会显示在主界面；
-它不会复制旧版页面，也不会覆盖 A 组知识库或用户的其他 Open WebUI 配置。
+启动脚本还会执行 [`scripts/install_openwebui_bridge.py`](scripts/install_openwebui_bridge.py)，
+把模型连接卡片嵌入 Open WebUI 原生“设置 → 通用”页面。桥接只注入项目自己的卡片和样式，
+不修改 Open WebUI 上游源码；服务重启或 Open WebUI 升级后会自动重装。它不会复制旧版页面，
+也不会覆盖 A 组知识库或用户的其他 Open WebUI 配置。
 
 ```mermaid
 flowchart LR
@@ -208,7 +211,7 @@ OpenAI-compatible LLM，也可以直接使用上面的模型连接设置页保�
 LLM 调用统一收口在 [`src/llm.py`](src/llm.py)：`LLMClient.chat()` 负责查询改写、重排和
 回答生成，`LLMClient.embed()` 负责建库/在线向量查询，配置默认来自 `.env` 的
 `LLM_API_FORMAT`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`EMBEDDING_MODE` 和
-`EMBEDDING_MODEL`，也可由 `/settings` 的运行时配置覆盖前四项。调用链是：
+`EMBEDDING_MODEL`，也可由 Open WebUI“证据模型连接”卡片（或 `/settings` 备用页）的运行时配置覆盖前四项。调用链是：
 `src/app/openwebui.py` → `src/tracks/pipeline.py::ask` → 赛道改写/检索 →
 `src/generation/answer.py::generate_answer` → `src/llm.py`。
 

@@ -58,7 +58,10 @@ def evidence_banner(
         "**RAG 链路**：查询改写 → Chroma + BM25 混合检索 → 基于证据生成 → 引用校验。"
     )
     if settings_url:
-        content += f"\n\n[打开模型连接设置]({settings_url.rstrip('/')})"
+        content += (
+            "\n\n模型连接：打开 Open WebUI → 设置 → 通用 → 证据模型连接。"
+            f"\n\n[备用模型连接设置页]({settings_url.rstrip('/')})"
+        )
 
     return {
         "id": EVIDENCE_BANNER_ID,
