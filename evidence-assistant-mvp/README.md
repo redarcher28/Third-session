@@ -26,19 +26,32 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 模型选择和 Markdown/SSE 渲染；`/v1/chat/completions` 内部会继续执行查询改写、A 组
 知识库混合检索、基于检索证据的生成和引用校验。
 
-## 快速开始
+## 快速开始（换到其他电脑）
 
 ```bash
-cd /Users/quentincrane/Documents/第三期/Third-session/evidence-assistant-mvp
+cd /path/to/evidence-assistant-mvp
 
-# macOS：项目后端使用独立 Conda 环境
-conda create -y -p /Users/quentincrane/conda_envs/evidence_mvp python=3.12 pip
-conda run -p /Users/quentincrane/conda_envs/evidence_mvp \
+# 项目后端环境；环境名是跨电脑通用的，不依赖某台机器的绝对路径
+conda create -y -n evidence_mvp python=3.12 pip
+conda run -n evidence_mvp \
   python -m pip install -r requirements.txt
+
+# Open WebUI 主前端环境
+conda create -y -n open_webui python=3.11 pip
+conda run -n open_webui python -m pip install open-webui
+
+# 可选：复制无密钥模板；也可以跳过，启动后在设置页填写连接信息
 cp .env.example .env
+
+# 启动后端 + Open WebUI
+bash scripts/start_openwebui.sh
 ```
 
-编辑 `.env`，按 ByeAPI 的 OpenAI Responses 接口配置；只需填入令牌：
+浏览器打开 [http://127.0.0.1:8080/](http://127.0.0.1:8080/)，然后点击证据台 Banner
+中的“模型连接设置”，或直接打开 [http://127.0.0.1:8000/settings](http://127.0.0.1:8000/settings)。
+在那里填写 API Base URL、API Key、模型名和协议，保存后立即生效，不需要编辑 `.env`。
+
+如果希望使用文件配置，也可以编辑 `.env`，按 ByeAPI 的 OpenAI Responses 接口填写：
 
 ```env
 LLM_API_FORMAT=responses
@@ -59,12 +72,22 @@ ByeAPI Responses 不保证提供本项目所需的 Embeddings，因此 `EMBEDDIN
 
 未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
 
+如果电脑上使用的是 Conda prefix 环境而不是环境名，可这样启动，脚本仍兼容：
+
+```bash
+EVIDENCE_BACKEND_ENV=/absolute/path/to/evidence_mvp \
+OPENWEBUI_ENV=/absolute/path/to/open_webui \
+bash scripts/start_openwebui.sh
+```
+
+macOS/Linux 可直接执行上面的 Bash 命令；Windows 建议使用 WSL 或 Git Bash。
+
 ### 1. 构建知识库
 
 使用仓库中已经保存的 A 组 raw 语料离线重建（不访问外网，推荐当前分支使用）：
 
 ```bash
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   python scripts/build_kb.py --skip-live --stats
 ```
 
@@ -75,7 +98,7 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 拉取公开数据源（需网络）：
 
 ```bash
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   python scripts/build_kb.py
 ```
 
@@ -84,7 +107,7 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 ### 2. 冒烟测试
 
 ```bash
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   python scripts/smoke_demo.py
 ```
 
@@ -92,8 +115,8 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 
 ```bash
 # 首次准备 Open WebUI（只需执行一次）
-conda create -y -p /Users/quentincrane/conda_envs/open_webui python=3.11 pip
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
+conda create -y -n open_webui python=3.11 pip
+conda run --no-capture-output -n open_webui \
   python -m pip install open-webui
 
 # 启动后端 + 真正的 Open WebUI 主前端
@@ -109,7 +132,7 @@ bash scripts/start_openwebui.sh
 # http://127.0.0.1:8000/ 会自动跳转到 Open WebUI 主前端
 
 # Streamlit 备用课堂界面（统一赛道一/二选择器 + 赛道三评测）
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   streamlit run src/app/ui.py
 
 # FastAPI / Open WebUI adapter
@@ -163,7 +186,7 @@ LLM 调用统一收口在 [`src/llm.py`](src/llm.py)：`LLMClient.chat()` 负责
 RAG 数据流契约测试：
 
 ```bash
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   python -m unittest -v tests.test_rag_contract
 ```
 
@@ -172,7 +195,7 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 ### 4. 跑评测（赛道三）
 
 ```bash
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+conda run --no-capture-output -n evidence_mvp \
   python scripts/run_eval.py
 ```
 
