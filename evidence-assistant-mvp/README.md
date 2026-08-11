@@ -25,16 +25,12 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 ## 快速开始
 
 ```bash
-cd evidence-assistant-mvp
-python -m venv .venv
+cd /Users/quentincrane/Documents/第三期/Third-session/evidence-assistant-mvp
 
-# Windows
-.venv\Scripts\activate
-# macOS/Linux
-# source .venv/bin/activate
-
-pip install -r requirements.txt
-copy .env.example .env   # Linux: cp .env.example .env
+# macOS：项目后端使用独立 Conda 环境
+conda run -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python -m pip install -r requirements.txt
+cp .env.example .env
 ```
 
 编辑 `.env`，填入 OpenAI 兼容接口：
@@ -53,13 +49,15 @@ EMBEDDING_MODEL=text-embedding-3-small
 仅本地种子（无外网 API，推荐先跑通）：
 
 ```bash
-python scripts/build_kb.py --skip-live
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python scripts/build_kb.py --skip-live
 ```
 
 拉取公开数据源（需网络）：
 
 ```bash
-python scripts/build_kb.py
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python scripts/build_kb.py
 ```
 
 可将 PDF / Markdown 放入 `data/raw/local/` 后重建知识库。
@@ -67,37 +65,60 @@ python scripts/build_kb.py
 ### 2. 冒烟测试
 
 ```bash
-python scripts/smoke_demo.py
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python scripts/smoke_demo.py
 ```
 
 ### 3. 启动统一 Web 界面 / API
 
 ```bash
-# FastAPI + 统一赛道一/二 Web 界面（推荐）
-uvicorn src.app.api:app --reload --port 8000
-# 浏览器打开 http://127.0.0.1:8000/
+# 终端 A：项目后端（Open WebUI 的 OpenAI-compatible provider）
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  uvicorn src.app.api:app --host 127.0.0.1 --port 8000
+
+# 终端 B：首次准备 Open WebUI（只需执行一次）
+conda create -y -p /Users/quentincrane/conda_envs/open_webui python=3.11 pip
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
+  python -m pip install open-webui
+
+# 终端 B：启动 Open WebUI 主前端
+OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 \
+OPENAI_API_KEY=evidence-local \
+DATA_DIR=/Users/quentincrane/conda_envs/open_webui_data \
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
+  open-webui serve --host 127.0.0.1 --port 8080
+
+# 浏览器打开 http://127.0.0.1:8080/
+
+# FastAPI 自带证据台是无额外依赖的降级入口：http://127.0.0.1:8000/
 
 # Streamlit 备用课堂界面（统一赛道一/二选择器 + 赛道三评测）
-streamlit run src/app/ui.py
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  streamlit run src/app/ui.py
 
-# FastAPI
+# FastAPI / Open WebUI adapter
 # GET  /config/tracks
 # GET  /kb/stats
 # POST /ask  {"question":"...","track":"clinical","top_k":5}
 # POST /ask/batch  [{"question":"...","track":"nutrition"}]
+# GET  /v1/models
+# POST /v1/chat/completions  （Open WebUI 使用，支持 stream=true）
 # POST /eval/run
 ```
 
-赛道一和赛道二共用同一条后端链路：`query reformulation → 混合检索 → grounded
-synthesis → citation validation`。差异由系统预置 Prompt 和赛道配置控制，前端只切换
-回答视角，不重复实现一套业务逻辑。
+Open WebUI 是主前端；本项目只提供 B 组范围内的 OpenAI-compatible 适配层，把模型选择
+映射到赛道一/二，并把统一问答结果转换为 Open WebUI 能直接渲染的普通或 SSE 流式
+回答。两条赛道共用同一条后端链路：`query reformulation → 混合检索 → grounded
+synthesis → citation validation`。差异由系统预置 Prompt 和赛道配置控制，前端不重复
+实现业务逻辑。
 
 本次 B 组前后端实现记录见：[docs/统一助手实现记录.md](docs/统一助手实现记录.md)。
 
 ### 4. 跑评测（赛道三）
 
 ```bash
-python scripts/run_eval.py
+conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
+  python scripts/run_eval.py
 ```
 
 结果写入 `data/eval/results/benchmark_results.json` 与 `benchmark_summary.md`。
