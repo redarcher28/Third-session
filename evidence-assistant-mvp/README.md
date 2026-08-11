@@ -82,9 +82,14 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
   python -m pip install open-webui
 
 # 终端 B：启动 Open WebUI 主前端
+# 首次启动/曾启动过默认 embedding 时保留 RESET_CONFIG_ON_START；初始化完成后可去掉
 OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 \
 OPENAI_API_KEY=evidence-local \
 DATA_DIR=/Users/quentincrane/conda_envs/open_webui_data \
+RESET_CONFIG_ON_START=true \
+RAG_EMBEDDING_ENGINE=openai \
+RAG_EMBEDDING_MODEL=evidence-embedding \
+BYPASS_EMBEDDING_AND_RETRIEVAL=true \
 conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
   open-webui serve --host 127.0.0.1 --port 8080
 
