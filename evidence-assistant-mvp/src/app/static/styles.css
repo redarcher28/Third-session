@@ -629,6 +629,50 @@ input:focus-visible + .toggle-track {
   font-family: "Iowan Old Style", "Noto Serif CJK SC", Georgia, serif;
 }
 
+.answer-card p {
+  margin: 0 0 13px;
+}
+
+.answer-card ul {
+  margin: 7px 0 16px;
+  padding-left: 23px;
+}
+
+.answer-card li {
+  margin: 5px 0;
+}
+
+.answer-card blockquote {
+  margin: 15px 0;
+  padding: 9px 14px;
+  color: var(--muted);
+  background: var(--paper-deep);
+  border-left: 3px solid var(--warm);
+  font-size: 13px;
+}
+
+.answer-card hr {
+  margin: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.answer-card code {
+  padding: 2px 5px;
+  color: var(--clinical);
+  background: var(--clinical-soft);
+  border-radius: 4px;
+  font-family: "SF Mono", "Roboto Mono", monospace;
+  font-size: 0.88em;
+}
+
+.answer-card a {
+  color: var(--clinical);
+  text-decoration: underline;
+  text-decoration-color: rgba(18, 107, 232, 0.3);
+  text-underline-offset: 2px;
+}
+
 .answer-card strong {
   color: var(--clinical);
 }

@@ -181,6 +181,24 @@ def _source_footer(
             f"{_single_line(name, 'other')} {count} 条" for name, count in levels.items()
         )
         lines.append(f"- 证据等级：{level_summary}")
+    timings = retrieval.get("timings_ms") or {}
+    if isinstance(timings, dict) and timings:
+        timing_labels = {
+            "query_reformulation_ms": "查询改写",
+            "retrieval_ms": "检索",
+            "relevance_check_ms": "相关性检查",
+            "generation_ms": "回答生成",
+            "citation_validation_ms": "引用校验",
+            "safety_guard_ms": "安全边界",
+            "total_ms": "总计",
+        }
+        timing_parts = [
+            f"{timing_labels.get(key, key)} {value:.0f} ms"
+            for key, value in timings.items()
+            if key in timing_labels
+        ]
+        if timing_parts:
+            lines.append(f"- 分阶段耗时：{' · '.join(timing_parts)}")
 
     if citations:
         lines.extend(
@@ -295,6 +313,28 @@ def _stream_payloads(
     yield "data: [DONE]\n\n"
 
 
+def _stream_rag_answer(
+    *,
+    response_id: str,
+    created: int,
+    model: str,
+    question: str,
+    track: str,
+) -> Iterator[str]:
+    """先建立 SSE，再执行 RAG，避免 Open WebUI 在远程调用期间无任何反馈。"""
+
+    # SSE 注释不会进入回答正文，但会让客户端立即收到响应头和连接状态。
+    yield ": evidence-assistant retrieval-started\n\n"
+    result = ask(question, track=track, top_k=5, use_live_tools=False)
+    answer = _render_rag_answer(result)
+    yield from _stream_payloads(
+        response_id=response_id,
+        created=created,
+        model=model,
+        answer=answer,
+    )
+
+
 def chat_completions(request: OpenAIChatRequest) -> dict[str, Any] | StreamingResponse:
     """将 Open WebUI 请求桥接到统一赛道问答链路。"""
 
@@ -303,21 +343,17 @@ def chat_completions(request: OpenAIChatRequest) -> dict[str, Any] | StreamingRe
     if not question:
         raise HTTPException(status_code=400, detail="messages must include a user question")
 
-    # Open WebUI 的模型选择决定赛道；证据数量和在线补检索仍由 B 组服务端统一控制。
-    # Open WebUI 自己的 RAG 在启动参数中关闭，避免同一问题被重复检索；这里的 ask()
-    # 仍会执行项目知识库的 query reformulation → HybridRetriever → grounded synthesis。
-    result = ask(question, track=track, top_k=5, use_live_tools=False)
-    answer = _render_rag_answer(result)
     response_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
 
     if request.stream:
         return StreamingResponse(
-            _stream_payloads(
+            _stream_rag_answer(
                 response_id=response_id,
                 created=created,
                 model=request.model,
-                answer=answer,
+                question=question,
+                track=track,
             ),
             media_type="text/event-stream",
             headers={
@@ -327,9 +363,11 @@ def chat_completions(request: OpenAIChatRequest) -> dict[str, Any] | StreamingRe
             },
         )
 
+    # 非流式调用仍需等待完整 RAG 结果；Open WebUI 默认使用上面的流式分支。
+    result = ask(question, track=track, top_k=5, use_live_tools=False)
     return _completion_payload(
         response_id=response_id,
         created=created,
         model=request.model,
-        answer=answer,
+        answer=_render_rag_answer(result),
     )

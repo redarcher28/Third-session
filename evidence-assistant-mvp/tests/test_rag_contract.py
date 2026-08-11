@@ -123,11 +123,13 @@ class RagContractTests(unittest.TestCase):
 
         self.assertEqual(retriever.query, "hypertension guideline long-term management cardiovascular risk")
         self.assertEqual(retriever.kwargs["top_k"], 3)
+        self.assertFalse(retriever.kwargs["use_llm_rerank"])
         self.assertEqual(response.retrieval["retrieved_count"], 1)
         self.assertEqual(response.citations[0].index, 1)
         self.assertEqual(response.contexts[0].doc_id, "local:hypertension-guideline")
         self.assertTrue(response.citation_check["ok"])
         self.assertFalse(response.refused)
+        self.assertIn("total_ms", response.timings_ms)
 
     def test_openwebui_response_keeps_answer_to_source_mapping_visible(self) -> None:
         citation = _citation()

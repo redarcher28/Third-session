@@ -239,11 +239,25 @@
     const sources = Object.entries(retrieval.sources || {})
       .map(([key, count]) => `${key} ${count}`)
       .join(" · ");
+    const timings = retrieval.timings_ms || {};
+    const timingLabels = {
+      query_reformulation_ms: "改写",
+      retrieval_ms: "检索",
+      relevance_check_ms: "相关性",
+      generation_ms: "生成",
+      citation_validation_ms: "校验",
+      total_ms: "总计",
+    };
+    const timingText = Object.entries(timings)
+      .filter(([key]) => timingLabels[key])
+      .map(([key, value]) => `${timingLabels[key]} ${Math.round(value)} ms`)
+      .join(" · ");
     els.retrievalSummary.hidden = false;
     els.retrievalSummary.innerHTML = `
       <span class="summary-label">检索记录</span>
       <span>${escapeHtml(retrieval.retrieved_count)} 条证据 · ${escapeHtml(sources || "来源未知")}</span>
-      <span class="summary-query">查询：${escapeHtml(retrieval.rewritten_query || "")}</span>`;
+      <span class="summary-query">查询：${escapeHtml(retrieval.rewritten_query || "")}</span>
+      ${timingText ? `<span>耗时：${escapeHtml(timingText)}</span>` : ""}`;
   }
 
   function renderResponse(response) {

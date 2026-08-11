@@ -84,3 +84,4 @@ class AskResponse(BaseModel):
     prompt_version: str = ""  # 赛道 Prompt 栈版本
     retrieval: dict[str, Any] = Field(default_factory=dict)  # 检索摘要与来源分布
     citation_check: dict[str, Any] = Field(default_factory=dict)  # 引用校验明细
+    timings_ms: dict[str, float] = Field(default_factory=dict)  # 各阶段耗时，便于定位慢点

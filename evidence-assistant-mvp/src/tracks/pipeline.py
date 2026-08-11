@@ -10,8 +10,10 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
+from time import perf_counter
 from typing import Any
 
+from src.config import get_settings
 from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer
 from src.kb.chunking import docs_to_chunks
 from src.models import AskResponse, Citation
@@ -207,11 +209,12 @@ def _retrieval_summary(
     rewritten_query: str,
     top_k: int,
     use_live_tools: bool,
+    timings_ms: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     """生成供前端和报告使用的轻量检索摘要，不暴露完整内部候选。"""
     sources = Counter(str(c.get("source") or "unknown") for c in contexts)
     levels = Counter(str(c.get("evidence_level") or "other") for c in contexts)
-    return {
+    summary = {
         "rewritten_query": rewritten_query,
         "requested_top_k": top_k,
         "retrieved_count": len(contexts),
@@ -220,6 +223,16 @@ def _retrieval_summary(
         "live_tools": use_live_tools,
         "prompt_layers": list(PROMPT_LAYERS),
     }
+    if timings_ms:
+        summary["timings_ms"] = dict(timings_ms)
+    return summary
+
+
+def _finish_timings(timings_ms: dict[str, float], started: float) -> dict[str, float]:
+    """补充总耗时并统一保留一位小数，方便前端直接展示。"""
+
+    timings_ms["total_ms"] = round((perf_counter() - started) * 1000, 1)
+    return timings_ms
 
 def ask(
     question: str,
@@ -242,6 +255,9 @@ def ask(
     返回:
         AskResponse: 含回答、引用、证据面板、拒答标记、校验结果。
     """
+    started = perf_counter()
+    timings_ms: dict[str, float] = {}
+
     if track not in {"clinical", "nutrition"}:
         raise ValueError(f"unsupported track: {track}")
 
@@ -251,6 +267,8 @@ def ask(
     if track == "nutrition":
         # 产品边界：问具体药量/剂量的问题直接通俗拒答，不走检索生成
         if detect_dosage_request(question):
+            timings_ms["safety_guard_ms"] = round((perf_counter() - started) * 1000, 1)
+            _finish_timings(timings_ms, started)
             return AskResponse(
                 answer=NUTRITION_DOSAGE_REFUSAL + DISCLAIMER,
                 citations=[],
@@ -264,30 +282,46 @@ def ask(
                     rewritten_query=question,
                     top_k=top_k,
                     use_live_tools=use_live_tools,
+                    timings_ms=timings_ms,
                 ),
                 citation_check={"ok": True, "has_citations": False, "reason": "dosage_request"},
+                timings_ms=timings_ms,
             )
+        rewrite_started = perf_counter()
         rewritten = rewrite_nutrition_query(question)
+        timings_ms["query_reformulation_ms"] = round(
+            (perf_counter() - rewrite_started) * 1000, 1
+        )
         persona, style = profile.persona, profile.style
         prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
     else:
+        rewrite_started = perf_counter()
         rewritten = rewrite_clinical_query(question)
+        timings_ms["query_reformulation_ms"] = round(
+            (perf_counter() - rewrite_started) * 1000, 1
+        )
         persona, style = profile.persona, profile.style
         prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
 
+    retrieval_started = perf_counter()
     contexts = retriever.retrieve(
         rewritten,
         top_k=top_k,
         prefer_levels=prefer,
         boost_tags=boost,
+        use_llm_rerank=get_settings().rag_use_llm_rerank,
     )
     if use_live_tools:
         contexts = _live_augment(rewritten, contexts)[: top_k + 2]
+    timings_ms["retrieval_ms"] = round((perf_counter() - retrieval_started) * 1000, 1)
 
     # 临床赛道要求指南/系统综述/RCT 级证据（规则 2：缺预期证据类型→标注不足）
+    relevance_started = perf_counter()
     expect_levels = tuple(PREFER_LEVELS[:3]) if track == "clinical" else None
     reject_reason = _is_low_relevance(question, contexts, expect_levels=expect_levels)
+    timings_ms["relevance_check_ms"] = round((perf_counter() - relevance_started) * 1000, 1)
     if reject_reason:
+        _finish_timings(timings_ms, started)
         return AskResponse(
             answer=_build_qualified_refusal(question, contexts, reject_reason) + DISCLAIMER,
             citations=[],
@@ -302,10 +336,13 @@ def ask(
                 rewritten_query=rewritten,
                 top_k=top_k,
                 use_live_tools=use_live_tools,
+                timings_ms=timings_ms,
             ),
             citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
+            timings_ms=timings_ms,
         )
 
+    generation_started = perf_counter()
     answer, citations, refused = generate_answer(
         question,
         contexts,
@@ -313,6 +350,8 @@ def ask(
         answer_style=style,
         track=track,
     )
+    timings_ms["generation_ms"] = round((perf_counter() - generation_started) * 1000, 1)
+    validation_started = perf_counter()
     check = verify_citations(answer, contexts)
     if not refused:
         answer = strip_invalid_claims(answer, check)
@@ -323,6 +362,10 @@ def ask(
             answer = answer.rstrip() + (
                 "\n\n> ⚠️ 如涉及具体药量/剂量，请以医生或药师的意见为准，切勿自行调整。"
             )
+    timings_ms["citation_validation_ms"] = round(
+        (perf_counter() - validation_started) * 1000, 1
+    )
+    _finish_timings(timings_ms, started)
 
     ctx_citations = _contexts_to_citations(contexts)
 
@@ -339,8 +382,10 @@ def ask(
             rewritten_query=rewritten,
             top_k=top_k,
             use_live_tools=use_live_tools,
+            timings_ms=timings_ms,
         ),
         citation_check=check,
+        timings_ms=timings_ms,
     )
 
 
