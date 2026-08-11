@@ -44,7 +44,7 @@ cp .env.example .env
 LLM_API_FORMAT=responses
 LLM_API_KEY=你的 ByeAPI token
 LLM_BASE_URL=https://api.byeapi.top
-LLM_MODEL=gpt-5.5
+LLM_MODEL=gpt-5.6-luna
 LLM_REASONING_EFFORT=xhigh
 EMBEDDING_MODE=local
 ```

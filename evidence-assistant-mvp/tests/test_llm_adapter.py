@@ -79,7 +79,7 @@ class LLMAdapterTests(unittest.TestCase):
                     llm_api_format="responses",
                     llm_api_key="byeapi-test-token",
                     llm_base_url="https://api.byeapi.top",
-                    llm_model="gpt-5.5",
+                    llm_model="gpt-5.6-luna",
                     llm_reasoning_effort="xhigh",
                 ),
             ),
@@ -103,7 +103,7 @@ class LLMAdapterTests(unittest.TestCase):
         url = post.call_args.args[0]
         kwargs = post.call_args.kwargs
         self.assertEqual(url, "https://api.byeapi.top/v1/responses")
-        self.assertEqual(kwargs["json"]["model"], "gpt-5.5")
+        self.assertEqual(kwargs["json"]["model"], "gpt-5.6-luna")
         self.assertEqual(kwargs["json"]["max_output_tokens"], 80)
         self.assertEqual(kwargs["json"]["reasoning"], {"effort": "xhigh"})
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer byeapi-test-token")
