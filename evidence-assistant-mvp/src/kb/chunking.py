@@ -92,6 +92,8 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
 
     创新点：
         - 溯源三元组（doc_id / title / url）全量校验：缺一项即报告具体 chunk_id；
+        - 跨字段一致性：chunk_id 必须以 doc_id 开头（「doc_id#cN」规范），
+          防止引用时对不上原文；
         - 追加空正文检查与总量统计，便于在 build 流程里做门槛断言。
 
     参数:
@@ -106,6 +108,7 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
             "missing_url": int,
             "missing_text": int,
             "bad_ids": list[str],
+            "mismatched_ids": list[str],
         }
 
     作用:
@@ -119,14 +122,19 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
         c.chunk_id for c in chunks
         if not (c.chunk_id or "").strip() or "#" not in c.chunk_id
     ]
+    mismatched_ids = [
+        c.chunk_id for c in chunks
+        if c.doc_id and c.chunk_id and not c.chunk_id.startswith(c.doc_id)
+    ]
     report = {
-        "ok": not (missing_doc_id or missing_title or missing_text or bad_ids),
+        "ok": not (missing_doc_id or missing_title or missing_text or bad_ids or mismatched_ids),
         "total": len(chunks),
         "missing_doc_id": len(missing_doc_id),
         "missing_title": len(missing_title),
         "missing_url": len(missing_url),
         "missing_text": len(missing_text),
         "bad_ids": bad_ids[:10],
+        "mismatched_ids": mismatched_ids[:10],
         "sample_missing_url": missing_url[:5],
     }
     return report

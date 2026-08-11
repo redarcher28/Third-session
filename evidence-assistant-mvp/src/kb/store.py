@@ -194,14 +194,13 @@ class EvidenceStore:
 # ---------------------------------------------------------------------------
 
 
-def _existing_texts(store: EvidenceStore) -> dict[str, str]:
-    """导出集合中现有 chunk_id -> text 映射，供增量重建比对。"""
-    col = store._col
-    count = col.count()
-    if not count:
-        return {}
-    res = col.get(limit=count, include=["documents"])
-    return dict(zip(res["ids"], res["documents"] or []))
+def _existing_items(store: EvidenceStore) -> dict[str, dict]:
+    """导出集合中现有 chunk_id -> {text, doc_id} 映射，供增量重建比对与剪枝。"""
+    items = store.all_chunks_for_bm25(limit=100000)
+    return {
+        m["chunk_id"]: {"text": m.get("text", ""), "doc_id": m.get("doc_id", "")}
+        for m in items
+    }
 
 
 def rebuild_collection_from_processed(reset: bool = True) -> int:
@@ -211,6 +210,8 @@ def rebuild_collection_from_processed(reset: bool = True) -> int:
     创新点：
         - 增量模式（reset=False）：以「文档文本指纹」比对，正文未变的 chunk 直接跳过，
           只重算变化/新增内容，改切分参数或加料后秒级更新；
+        - 删除剪枝：processed 中已不存在的文档，其 chunk 自动从库里清除，
+          增量更新真正做到「增改删」闭环，而非只增不删；
         - 自动选择 documents_with_wiki.json，缺失时回退 documents.json。
 
     参数:
@@ -233,12 +234,19 @@ def rebuild_collection_from_processed(reset: bool = True) -> int:
     if reset:
         store.reset()
     else:
-        existing = _existing_texts(store)
-        before = len(chunks)
-        chunks = [c for c in chunks if existing.get(c.chunk_id) != c.text]
+        full_chunks = chunks  # 全量快照：用于判断「文档是否还存在于 processed」
+        existing = _existing_items(store)
+        before = len(full_chunks)
+        chunks = [c for c in full_chunks if existing.get(c.chunk_id, {}).get("text") != c.text]
         if chunks:
             logger.info("Incremental rebuild: %d changed/new chunks (skipped %d unchanged)", len(chunks), before - len(chunks))
-        else:
+        # 注意：live_doc_ids 必须基于全量 chunk 计算，未变化的文档不能误判为已删除
+        live_doc_ids = {c.doc_id for c in full_chunks}
+        stale = [cid for cid, m in existing.items() if m.get("doc_id") not in live_doc_ids]
+        if stale:
+            store._col.delete(ids=stale)
+            logger.info("Pruned %d stale chunks (docs removed from processed)", len(stale))
+        if not chunks:
             logger.info("Incremental rebuild: nothing changed, store untouched (count=%d)", store.count())
             return 0
     n = store.upsert_chunks(chunks)

@@ -244,6 +244,13 @@ def _md_doc(doc_id: str, title: str, text: str) -> EvidenceDoc:
     )
 
 
+def _hard_cap(text: str, max_chars: int) -> list[str]:
+    """无标点兜底：按 max_chars 硬切，保证任何块都不超限。"""
+    if len(text) <= max_chars:
+        return [text]
+    return [text[i : i + max_chars] for i in range(0, len(text), max_chars)]
+
+
 def _split_paragraphs(text: str, max_chars: int) -> list[str]:
     """把超长章节按空行段落重新聚合成 ≤ max_chars 的若干块。"""
     paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
@@ -270,7 +277,11 @@ def _split_paragraphs(text: str, max_chars: int) -> list[str]:
             buf = p
     if buf:
         parts.append(buf)
-    return parts
+    # 兜底：整段无标点时按句切分可能仍超限，做一次硬上限切分
+    out: list[str] = []
+    for part in parts:
+        out.extend(_hard_cap(part, max_chars))
+    return out
 
 
 def split_long_local_markdown(md_path: Path, max_chars: int = 8000) -> list[EvidenceDoc]:

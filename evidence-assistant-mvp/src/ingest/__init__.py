@@ -116,8 +116,9 @@ def _norm_doi(doi: str) -> str:
 
 
 def _norm_title(title: str) -> str:
-    """标题归一化：小写、去标点、压缩空白，用于标题级比对。"""
-    t = re.sub(r"\s+", " ", title.lower()).strip()
+    """标题归一化：小写、去冠词、去标点、压缩空白，用于标题级比对。"""
+    t = re.sub(r"^(the|a|an)\s+", "", title.lower().strip())
+    t = re.sub(r"\s+", " ", t)
     return re.sub(r"[^\w\u4e00-\u9fff]+", "", t)
 
 
@@ -136,9 +137,40 @@ def _completeness(d: EvidenceDoc) -> int:
     return score
 
 
+def _merge_fields(keep: EvidenceDoc, other: EvidenceDoc) -> EvidenceDoc:
+    """
+    把 other 的非空字段融合进 keep（取并集，优先 keep 的既有值）。
+
+    优化点：去重不再「二选一丢信息」，而是保留完整度高的同时，
+    把被丢弃文档的 url/journal/year/doi/正文/tags/extra 补进胜出文档。
+    """
+    if not keep.url and other.url:
+        keep.url = other.url
+    if not keep.journal and other.journal:
+        keep.journal = other.journal
+    if not keep.doi and other.doi:
+        keep.doi = other.doi
+    if keep.year is None and other.year is not None:
+        keep.year = other.year
+    if not (keep.text or "").strip() and (other.text or "").strip():
+        keep.text = other.text
+    for t in other.tags:
+        if t not in keep.tags:
+            keep.tags.append(t)
+    for k, v in (other.extra or {}).items():
+        if v and k not in (keep.extra or {}):
+            keep.extra[k] = v
+    return keep
+
+
 def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
     按 DOI 优先、其次标题归一化，对证据文档强去重。
+
+    优化点：
+        - 标题归一化额外剥离 the/a/an 冠词，跨源标题更易对齐；
+        - 去重胜出文档会融合被丢弃文档的非空字段（url/journal/year/DOI/tags），
+          「保留信息更完整的一条」从二选一升级为取并集。
 
     参数:
         docs: 合并后的证据文档列表。
@@ -158,8 +190,12 @@ def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
         if key in ("doi:", "title:"):  # 无有效 DOI/标题，不参与去重
             key = f"id:{d.doc_id}"
         prev = seen.get(key)
-        if prev is None or _completeness(d) > _completeness(prev):
+        if prev is None:
             seen[key] = d
+        elif _completeness(d) > _completeness(prev):
+            seen[key] = _merge_fields(d, prev)  # 新文档胜出，融合旧文档字段
+        else:
+            seen[key] = _merge_fields(prev, d)  # 旧文档胜出，融合新文档字段
     return list(seen.values())
 
 
