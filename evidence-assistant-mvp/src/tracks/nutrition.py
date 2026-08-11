@@ -22,9 +22,9 @@ NUTRITION_PERSONA = (
 
 # 科普回答结构约束
 NUTRITION_STYLE = (
-    "结构：通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医；"
-    "多用「研究提示」「可能有助于」等表述，说明边界与局限；"
-    "少用术语，必要时括号解释；引用仍用 [n]。"
+    "回答必须按「通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医」四段组织，"
+    "用词口语化、避免堆砌术语；多用「研究提示」「可能有助于」等表述，"
+    "说明边界与局限；引用仍用 [n]。"
 )
 
 # 营养赛道检索时加权的标签
@@ -101,14 +101,19 @@ def rewrite_nutrition_query(question: str) -> str:
         {
             "role": "system",
             "content": (
-                "把消费者口语健康问题改写成可检索的证据查询"
-                "（可含饮食模式、营养干预、疾病风险关键词）。"
-                "只输出改写查询，不要解释。"
+                "把消费者口语健康问题改写成可检索的证据查询。\n"
+                "输出格式（只输出一行，不要解释）：\n"
+                "英文关键词（饮食模式/营养干预/疾病风险）"
+                " || 中文关键词（逗号分隔）。\n"
+                "示例：Mediterranean diet AND cardiovascular risk"
+                " || 地中海饮食, 心血管风险\n"
+                "如果输入包含「对话上下文」和「当前问题」，请结合上下文补齐指代，"
+                "只改写「当前问题」部分。"
             ),
         },
         {"role": "user", "content": question},
     ]
-    return llm.chat(messages, temperature=0, max_tokens=120).strip() or question
+    return llm.chat(messages, temperature=0, max_tokens=160).strip() or question
 
 
 def detect_dosage_request(question: str) -> bool:
@@ -198,4 +203,14 @@ def build_nutrition_action_tips(contexts: list[dict]) -> list[str]:
             tips.append(sent[:120])
             if len(tips) >= 5:
                 return tips
+    generic = [
+        "保持规律运动与健康体重管理。",
+        "优先选择未加工或少加工的食物，减少含糖饮料与高盐零食。",
+        "调整饮食或用药前，先咨询医生或营养师；本系统不提供个体化方案。",
+    ]
+    for tip in generic:
+        if len(tips) >= 5:
+            break
+        if tip not in tips:
+            tips.append(tip)
     return tips

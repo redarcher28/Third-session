@@ -63,6 +63,13 @@ class Citation(BaseModel):
     snippet: str = ""  # 摘要片段，供证据面板展示
 
 
+class ChatMessage(BaseModel):
+    """多轮对话中的一条历史消息。"""
+
+    role: Literal["user", "assistant"] = "user"
+    content: str = ""
+
+
 class AskRequest(BaseModel):
     """HTTP / 内部问答请求体。"""
 
@@ -70,6 +77,9 @@ class AskRequest(BaseModel):
     track: Literal["clinical", "nutrition"] = "clinical"  # 赛道
     use_live_tools: bool = False  # 是否启用在线补检索
     top_k: int = 5  # 最终采用的证据条数
+    year_from: int | None = None  # 可选：证据起始年份（含）
+    year_to: int | None = None  # 可选：证据结束年份（含）
+    history: list[ChatMessage] = Field(default_factory=list)  # 可选：之前的对话记录
 
 
 class AskResponse(BaseModel):

@@ -16,7 +16,7 @@ from chromadb.config import Settings as ChromaSettings
 from src.config import get_settings
 from src.ingest import load_docs
 from src.kb.chunking import docs_to_chunks, merge_tiny_chunks
-from src.llm import get_llm
+from src.llm import embed_with_cache
 from src.models import Chunk
 
 logger = logging.getLogger(__name__)
@@ -68,12 +68,11 @@ class EvidenceStore:
         """
         if not chunks:
             return 0
-        llm = get_llm()
         total = 0
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i : i + batch_size]
             texts = [c.text for c in batch]
-            embeddings = llm.embed(texts)
+            embeddings = embed_with_cache(texts)
             ids = [c.chunk_id for c in batch]
             metadatas: list[dict[str, Any]] = []
             documents: list[str] = []
@@ -121,8 +120,7 @@ class EvidenceStore:
         返回:
             list[dict]: 每项含 chunk_id/text/distance 及元数据字段。
         """
-        llm = get_llm()
-        emb = llm.embed([query])[0]
+        emb = embed_with_cache([query])[0]
         kwargs: dict[str, Any] = {
             "query_embeddings": [emb],
             "n_results": n_results,

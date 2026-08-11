@@ -11,9 +11,9 @@ from typing import Any
 from src.generation.answer import extract_citation_indices
 
 
-PMID_RE = re.compile(r"\bPMID[:\s]*([0-9]{5,9})\b", re.I)
-NCT_RE = re.compile(r"\b(NCT\d{8})\b", re.I)
-DOC_RE = re.compile(r"\b((?:pmid|nct|epmc|local|wiki):[^\s\]，。；;,]+)", re.I)
+PMID_RE = re.compile(r"(?<![A-Za-z0-9])PMID[:\s]*([0-9]{5,9})(?![A-Za-z0-9])", re.I)
+NCT_RE = re.compile(r"(?<![A-Za-z0-9])(NCT\d{8})(?![A-Za-z0-9])", re.I)
+DOC_RE = re.compile(r"(?<![A-Za-z0-9])((?:pmid|nct|epmc|local|wiki):[^\s\]，。；;,]+)", re.I)
 
 
 def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -113,7 +113,7 @@ def strip_invalid_claims(answer: str, check: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】引用修复与幻觉防御增强（只定义签名与备注，不写函数体）
+# 引用修复与幻觉防御增强
 # ---------------------------------------------------------------------------
 
 
@@ -123,7 +123,7 @@ def repair_answer_with_valid_cites(
     check: dict[str, Any],
 ) -> str:
     """
-    【待完善】当引用校验失败时，基于合法证据重写回答中的引用部分。
+    当引用校验失败时，基于合法证据重写回答中的引用部分。
 
     参数:
         answer: 原始生成回答。
@@ -136,7 +136,27 @@ def repair_answer_with_valid_cites(
     作用:
         降低假引用残留，提升赛道三「假引用减少」指标表现。
     """
-    raise NotImplementedError("待队员实现：repair_answer_with_valid_cites")
+    allowed = set(range(1, len(contexts) + 1))
+
+    def keep_valid(match: re.Match[str]) -> str:
+        num = int(match.group(1))
+        return match.group(0) if num in allowed else ""
+
+    repaired = re.sub(r"\[(\d+)\]", keep_valid, answer)
+    repaired = PMID_RE.sub("", repaired)
+    repaired = NCT_RE.sub("", repaired)
+    repaired = DOC_RE.sub("", repaired)
+    # 清理移除编号后残留的 "PMID:" / "NCT" 等前缀
+    repaired = re.sub(r"(?<![A-Za-z0-9])PMID[:\s]*", "", repaired, flags=re.I)
+    repaired = re.sub(r"(?<![A-Za-z0-9])NCT\b", "", repaired, flags=re.I)
+    repaired = re.sub(r"\s{2,}", " ", repaired).strip()
+
+    if repaired != answer:
+        repaired = (
+            repaired.rstrip()
+            + "\n\n> 引用校验：已移除无法核实的引用编号/文献标识，请以证据面板为准。"
+        )
+    return repaired
 
 
 def detect_unsupported_claims(
@@ -144,7 +164,7 @@ def detect_unsupported_claims(
     contexts: list[dict[str, Any]],
 ) -> list[str]:
     """
-    【待完善】找出回答中可能未被证据支撑的句子/主张。
+    找出回答中可能未被证据支撑的句子/主张。
 
     参数:
         answer: 模型回答。
@@ -156,4 +176,30 @@ def detect_unsupported_claims(
     作用:
         辅助人工复核与自动拒答/降级策略。
     """
-    raise NotImplementedError("待队员实现：detect_unsupported_claims")
+    allowed = set(range(1, len(contexts) + 1))
+    sentences = re.split(r"(?<=[。！？!?；;])\s*|\n+", answer)
+    suspicious: list[str] = []
+    skip_markers = ("声明", "参考文献", "引用校验", "不构成", "仅供学习", "---")
+    invent_patterns = [
+        r"根据某项研究",
+        r"著名的 .+ 试验",
+        r"发表于《[^》]+》",
+        r"et al\.",
+    ]
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence or len(sentence) < 10:
+            continue
+        if any(marker in sentence for marker in skip_markers):
+            continue
+        used = [int(x) for x in re.findall(r"\[(\d+)\]", sentence)]
+        if any(i in allowed for i in used):
+            continue
+        if any(re.search(p, sentence) for p in invent_patterns):
+            suspicious.append(sentence)
+        elif re.search(r"[\u4e00-\u9fffA-Za-z]", sentence):
+            suspicious.append(sentence)
+        if len(suspicious) >= 10:
+            break
+    return suspicious

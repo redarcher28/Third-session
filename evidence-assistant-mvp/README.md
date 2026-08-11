@@ -22,6 +22,8 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 
 共用底座：PubMed / ClinicalTrials.gov / Europe PMC / 本地种子摘要 → 切分 → Chroma → 混合检索 → 带引用生成。
 
+赛道一 / 二支持 **多轮对话**：像 DeepSeek / ChatGPT 一样连续追问，历史上下文会自动带入查询改写、证据检索与回答生成。
+
 ## 快速开始
 
 ```bash
@@ -44,6 +46,18 @@ LLM_API_KEY=sk-...
 LLM_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-4o-mini
 EMBEDDING_MODEL=text-embedding-3-small
+# 可选：Embedding 独立端点（DeepSeek 无 embedding 接口时留空则回退离线哈希）
+EMBEDDING_BASE_URL=
+EMBEDDING_API_KEY=
+```
+
+使用 DeepSeek 时，聊天部分可直接配置：
+
+```env
+LLM_API_KEY=sk-你的deepseek-key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-chat
+EMBEDDING_MODE=offline
 ```
 
 未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
@@ -73,12 +87,12 @@ python scripts/smoke_demo.py
 ### 3. 启动界面 / API
 
 ```bash
-# Streamlit 三 Tab 演示
+# Streamlit 聊天式多轮对话演示
 streamlit run src/app/ui.py
 
 # FastAPI
 uvicorn src.app.api:app --reload --port 8000
-# POST /ask  {"question":"...","track":"clinical"}
+# POST /ask  {"question":"...","track":"clinical","history":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
 # POST /eval/run
 ```
 
@@ -92,8 +106,8 @@ python scripts/run_eval.py
 
 ## 演示路径建议
 
-1. **临床 Tab**：问「高血压为什么要长期吃药」→ 展示证据卡片与 `[n]` 引用。
-2. **营养 Tab**：问「地中海饮食证据」→ 对比更通俗的表述，引用仍可点开。
+1. **临床 Tab**：问「高血压为什么要长期吃药」→ 展示证据卡片与 `[n]` 引用 → 继续追问「那饮食上要注意什么？」观察多轮上下文衔接。
+2. **营养 Tab**：问「地中海饮食证据」→ 对比更通俗的表述，引用仍可点开 → 追问「那我每天吃多少盐更合适？」验证产品边界与多轮语境。
 3. **评测 Tab**：运行评测 → 看假引用率 / 要点覆盖柱状图 → 打开「火星尘埃」「紫水晶」等应拒答 case。
 
 ## 项目结构

@@ -11,7 +11,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
+from pathlib import Path
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -29,19 +33,32 @@ class LLMClient:
         settings = get_settings()
         self.model = settings.llm_model
         self.embedding_model = settings.embedding_model
-        self._client = OpenAI(
+        self._chat_client = OpenAI(
             api_key=settings.llm_api_key,
             base_url=settings.llm_base_url,
         )
-        self._offline = (
+        self._chat_offline = (
             not settings.llm_api_key
             or settings.llm_api_key.startswith("sk-your-key")
         )
+        embed_key = settings.embedding_api_key or settings.llm_api_key
+        embed_base = settings.embedding_base_url or settings.llm_base_url
+        self._embed_client = OpenAI(
+            api_key=embed_key,
+            base_url=embed_base,
+        )
+        if settings.embedding_mode == "offline":
+            self._embed_offline = True
+        else:
+            self._embed_offline = (
+                not embed_key
+                or embed_key.startswith("sk-your-key")
+            )
 
     @property
     def is_offline(self) -> bool:
         """是否处于离线占位模式。"""
-        return self._offline
+        return self._chat_offline
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
     def chat(
@@ -62,9 +79,9 @@ class LLMClient:
         返回:
             str: 模型回复正文（已 strip）。
         """
-        if self._offline:
+        if self._chat_offline:
             return self._offline_chat(messages)
-        resp = self._client.chat.completions.create(
+        resp = self._chat_client.chat.completions.create(
             model=self.model,
             messages=messages,  # type: ignore[arg-type]
             temperature=temperature,
@@ -85,14 +102,18 @@ class LLMClient:
         """
         if not texts:
             return []
-        if self._offline:
+        if self._embed_offline:
             return [self._hash_embed(t) for t in texts]
-        resp = self._client.embeddings.create(
-            model=self.embedding_model,
-            input=texts,
-        )
-        data = sorted(resp.data, key=lambda x: x.index)
-        return [list(d.embedding) for d in data]
+        try:
+            resp = self._embed_client.embeddings.create(
+                model=self.embedding_model,
+                input=texts,
+            )
+            data = sorted(resp.data, key=lambda x: x.index)
+            return [list(d.embedding) for d in data]
+        except Exception as e:
+            logger.warning("embedding failed, fallback to offline hash: %s", e)
+            return [self._hash_embed(t) for t in texts]
 
     def _offline_chat(self, messages: list[dict[str, str]]) -> str:
         """
@@ -107,7 +128,13 @@ class LLMClient:
         user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         if "rewrite" in system.lower() or "改写" in system:
-            return user.strip().split("\n")[0][:200]
+            if "当前问题：" in user:
+                current = user.split("当前问题：", 1)[1].strip().split("\n")[0][:200]
+            else:
+                current = user.strip().split("\n")[0][:200]
+            if "||" not in current:
+                return f"{current} || {current}"
+            return current
         if "rerank" in system.lower() or "相关性" in system:
             return "1,2,3,4,5"
         if "wiki" in system.lower() or "主题知识页" in system:
@@ -175,7 +202,7 @@ def get_llm() -> LLMClient:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】模型调用增强（只定义签名与备注，不写函数体）
+# 模型调用增强
 # ---------------------------------------------------------------------------
 
 
@@ -185,7 +212,7 @@ def with_json_mode_chat(
     temperature: float = 0.0,
 ) -> dict:
     """
-    【待完善】要求模型输出 JSON，并解析为 dict。
+    要求模型输出 JSON，并解析为 dict。
 
     参数:
         messages: 对话消息。
@@ -197,12 +224,28 @@ def with_json_mode_chat(
     作用:
         供重排、大纲、评分解析等结构化任务复用，减少正则抠文本。
     """
-    raise NotImplementedError("待队员实现：with_json_mode_chat")
+    llm = get_llm()
+    prompt_messages = [
+        *messages,
+        {
+            "role": "system",
+            "content": "只输出一个合法 JSON 对象，不要输出解释或 Markdown 代码块。",
+        },
+    ]
+    raw = llm.chat(prompt_messages, temperature=temperature, max_tokens=1200)
+    text = raw.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    start, end = text.find("{"), text.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError(f"模型未返回 JSON：{raw[:200]}")
+    return json.loads(text[start : end + 1])
 
 
 def embed_with_cache(texts: list[str], cache_dir: str | None = None) -> list[list[float]]:
     """
-    【待完善】带本地缓存的 embedding，避免重复计费。
+    带本地缓存的 embedding，避免重复计费。
 
     参数:
         texts: 文本列表。
@@ -214,4 +257,31 @@ def embed_with_cache(texts: list[str], cache_dir: str | None = None) -> list[lis
     作用:
         加快反复建库/调试时的向量化速度。
     """
-    raise NotImplementedError("待队员实现：embed_with_cache")
+    if not texts:
+        return []
+    cache_dir = cache_dir or str(get_settings().chroma_path / "embed_cache")
+    cache_path = Path(cache_dir)
+    cache_path.mkdir(parents=True, exist_ok=True)
+
+    hashes = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+    cached: dict[str, list[float]] = {}
+    for h in hashes:
+        cache_file = cache_path / f"{h}.json"
+        if cache_file.exists():
+            try:
+                cached[h] = json.loads(cache_file.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+
+    missing = [i for i, h in enumerate(hashes) if h not in cached]
+    if missing:
+        vectors = get_llm().embed([texts[i] for i in missing])
+        for i, vec in zip(missing, vectors):
+            cached[hashes[i]] = vec
+            try:
+                (cache_path / f"{hashes[i]}.json").write_text(
+                    json.dumps(vec), encoding="utf-8"
+                )
+            except OSError:
+                pass
+    return [cached[h] for h in hashes]

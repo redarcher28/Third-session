@@ -1,24 +1,24 @@
 {
-  "count": 2063,
+  "count": 2089,
   "docs_covered": 1044,
   "by_source": {
     "local": 7,
-    "pubmed": 1129,
-    "clinicaltrials": 257,
-    "europepmc": 662,
-    "wiki": 8
+    "pubmed": 1142,
+    "clinicaltrials": 259,
+    "europepmc": 664,
+    "wiki": 17
   },
   "by_level": {
-    "guideline": 120,
-    "meta": 311,
-    "rct": 603,
+    "guideline": 121,
+    "meta": 314,
+    "rct": 610,
     "ebook": 1,
-    "other": 812,
-    "observational": 208,
-    "wiki": 8
+    "other": 817,
+    "observational": 209,
+    "wiki": 17
   },
   "by_year": {
-    "-1": 14,
+    "-1": 23,
     "1988": 1,
     "1993": 2,
     "1998": 1,
@@ -40,12 +40,12 @@
     "2017": 8,
     "2018": 18,
     "2019": 24,
-    "2020": 17,
+    "2020": 18,
     "2021": 32,
     "2022": 37,
-    "2023": 65,
-    "2024": 120,
-    "2025": 378,
-    "2026": 1226
+    "2023": 67,
+    "2024": 121,
+    "2025": 384,
+    "2026": 1233
   }
 }

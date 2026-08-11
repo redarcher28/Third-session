@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
 
+    # --- Embedding 独立端点（可选；不填则复用 LLM 配置）---
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_mode: str = "auto"  # auto / api / offline
+
     # --- NCBI / PubMed 礼貌访问参数 ---
     ncbi_api_key: str = ""
     ncbi_email: str = "evidence-mvp@example.com"
@@ -75,13 +80,13 @@ def get_settings() -> Settings:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】运行时配置校验（只定义签名与备注，不写函数体）
+# 运行时配置校验
 # ---------------------------------------------------------------------------
 
 
 def validate_runtime_config() -> dict:
     """
-    【待完善】检查 .env 关键配置是否可用（API Key、路径可写、模型名等）。
+    检查 .env 关键配置是否可用（API Key、路径可写、模型名等）。
 
     参数:
         无
@@ -96,4 +101,44 @@ def validate_runtime_config() -> dict:
     作用:
         演示前一键自检，避免上台才发现未配 Key 或目录不可写。
     """
-    raise NotImplementedError("待队员实现：validate_runtime_config")
+    settings = get_settings()
+    issues: list[str] = []
+    blocking: list[str] = []
+
+    offline_mode = not settings.llm_api_key or settings.llm_api_key.startswith(
+        "sk-your-key"
+    )
+    if offline_mode:
+        issues.append("未配置有效 LLM_API_KEY，将使用离线占位模式（链路可跑，回答为占位）。")
+    if not settings.llm_model.strip():
+        issues.append("LLM_MODEL 为空。")
+        blocking.append("llm_model")
+    if not settings.embedding_model.strip():
+        issues.append("EMBEDDING_MODEL 为空。")
+        blocking.append("embedding_model")
+
+    for name, path in [
+        ("chroma", settings.chroma_path),
+        ("processed", settings.processed_path),
+        ("raw", settings.raw_path),
+    ]:
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            issues.append(f"{name} 目录不可写：{path}（{e}）")
+            blocking.append(name)
+
+    if not (settings.processed_path / "documents_with_wiki.json").exists():
+        issues.append(
+            "缺少 data/processed/documents_with_wiki.json，请先运行 "
+            "python scripts/build_kb.py --skip-live。"
+        )
+        blocking.append("processed_docs")
+
+    return {
+        "ok": not blocking,
+        "offline_mode": offline_mode,
+        "issues": issues,
+        "llm_model": settings.llm_model,
+        "embedding_model": settings.embedding_model,
+    }

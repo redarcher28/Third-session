@@ -5,11 +5,14 @@ FastAPI 服务入口。
 接口:
 - GET  /health      健康检查
 - POST /ask         赛道一/二问答
+- POST /ask/batch   批量问答
+- GET  /kb/stats    知识库统计
 - POST /eval/run    触发赛道三评测
 """
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -21,6 +24,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models import AskRequest, AskResponse
+from src.config import validate_runtime_config
+from src.kb.store import export_store_stats
 from src.tracks.eval_bench import run_benchmark
 from src.tracks.pipeline import ask
 
@@ -45,7 +50,7 @@ ETHICS = (
 @app.get("/health")
 def health() -> dict:
     """健康检查，附带伦理声明。"""
-    return {"status": "ok", "ethics": ETHICS}
+    return {"status": "ok", "ethics": ETHICS, "config": validate_runtime_config()}
 
 
 @app.post("/ask", response_model=AskResponse)
@@ -54,7 +59,7 @@ def api_ask(req: AskRequest) -> AskResponse:
     问答接口。
 
     请求体 AskRequest:
-        question, track, use_live_tools, top_k
+        question, track, use_live_tools, top_k, history
     返回:
         AskResponse
     """
@@ -65,6 +70,9 @@ def api_ask(req: AskRequest) -> AskResponse:
         track=req.track,
         top_k=req.top_k,
         use_live_tools=req.use_live_tools,
+        year_from=req.year_from,
+        year_to=req.year_to,
+        history=[m.model_dump() for m in req.history],
     )
 
 
@@ -75,13 +83,14 @@ def api_eval_run() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】API 扩展（只定义签名与备注；若作为路由需自行挂载装饰器）
+# API 扩展
 # ---------------------------------------------------------------------------
 
 
+@app.post("/ask/batch", response_model=list[AskResponse])
 def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
     """
-    【待完善】批量问答接口逻辑（可用于评测预跑或压力演示）。
+    批量问答接口逻辑（可用于评测预跑或压力演示）。
 
     参数:
         questions: AskRequest 列表。
@@ -92,12 +101,28 @@ def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
     作用:
         减少逐条 HTTP 往返，方便脚本化评测。
     """
-    raise NotImplementedError("待队员实现：api_ask_batch")
+    if not questions:
+        return []
+    if any(not q.question.strip() for q in questions):
+        raise HTTPException(400, "batch contains empty question")
+    return [
+        ask(
+            q.question.strip(),
+            track=q.track,
+            top_k=q.top_k,
+            use_live_tools=q.use_live_tools,
+            year_from=q.year_from,
+            year_to=q.year_to,
+            history=[m.model_dump() for m in q.history],
+        )
+        for q in questions
+    ]
 
 
+@app.get("/kb/stats")
 def api_kb_stats() -> dict:
     """
-    【待完善】返回当前知识库规模与构成统计。
+    返回当前知识库规模与构成统计。
 
     参数:
         无
@@ -108,4 +133,13 @@ def api_kb_stats() -> dict:
     作用:
         给前端/报告提供「库里有什么」的只读接口。
     """
-    raise NotImplementedError("待队员实现：api_kb_stats")
+    stats = export_store_stats()
+    processed_file = ROOT / "data" / "processed" / "documents_with_wiki.json"
+    processed_docs = -1
+    if processed_file.exists():
+        try:
+            processed_docs = len(json.loads(processed_file.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError):
+            processed_docs = -1
+    stats["processed_docs"] = processed_docs
+    return stats
