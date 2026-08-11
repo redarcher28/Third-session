@@ -5,6 +5,8 @@ FastAPI 服务入口。
 接口:
 - GET  /health      健康检查
 - POST /ask         赛道一/二问答
+- GET  /v1/models   Open WebUI 模型列表
+- POST /v1/chat/completions  Open WebUI 对话适配
 - POST /eval/run    触发赛道三评测
 """
 
@@ -23,6 +25,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models import AskRequest, AskResponse
+from src.app.openwebui import (
+    OpenAIChatRequest,
+    chat_completions,
+    model_list,
+)
 from src.kb.store import export_store_stats
 from src.tracks.prompt_profiles import PROMPT_VERSION, public_track_configs
 from src.tracks.eval_bench import run_benchmark
@@ -65,6 +72,18 @@ def web_app() -> FileResponse:
 def track_config() -> dict:
     """返回前端需要的赛道文案、示例问题和安全边界。"""
     return public_track_configs()
+
+
+@app.get("/v1/models")
+def openai_models() -> dict:
+    """Open WebUI 连接 OpenAI-compatible provider 时读取的模型列表。"""
+    return model_list()
+
+
+@app.post("/v1/chat/completions")
+def openai_chat(request: OpenAIChatRequest) -> dict | object:
+    """将 Open WebUI 的对话请求转到赛道一/二统一流水线。"""
+    return chat_completions(request)
 
 
 @app.get("/kb/stats")
