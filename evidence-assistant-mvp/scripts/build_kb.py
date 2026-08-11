@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.config import get_settings
-from src.ingest import export_ingest_report, load_docs, merge_docs, save_docs
+from src.ingest import dedupe_by_doi_or_title, export_ingest_report, load_docs, merge_docs, save_docs
 from src.ingest.clinicaltrials import ingest_clinicaltrials
 from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
@@ -39,6 +39,7 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     if epmc_docs:
         save_docs(epmc_docs, settings.raw_path / "europepmc.json")
     all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs)
+    all_docs = dedupe_by_doi_or_title(all_docs)
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)
     report = export_ingest_report(all_docs, settings.processed_path / "ingest_report.md")

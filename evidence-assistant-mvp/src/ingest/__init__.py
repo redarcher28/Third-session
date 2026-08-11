@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -72,7 +73,6 @@ def merge_docs(*doc_lists: list[EvidenceDoc]) -> list[EvidenceDoc]:
 
 # ---------------------------------------------------------------------------
 # 采集质量与规范化
-# （normalize_evidence_level 已实现；其余任务仍为待完善签名，见各自注释）
 # ---------------------------------------------------------------------------
 
 
@@ -106,9 +106,39 @@ def normalize_evidence_level(raw_type: str, title: str) -> EvidenceLevel:
     return "other"
 
 
+def _norm_doi(doi: str) -> str:
+    """DOI 归一化：去前缀、小写、去空白，用于跨源比对。"""
+    d = doi.strip().lower()
+    for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+        if d.startswith(prefix):
+            d = d[len(prefix):]
+    return d.strip()
+
+
+def _norm_title(title: str) -> str:
+    """标题归一化：小写、去标点、压缩空白，用于标题级比对。"""
+    t = re.sub(r"\s+", " ", title.lower()).strip()
+    return re.sub(r"[^\w\u4e00-\u9fff]+", "", t)
+
+
+def _completeness(d: EvidenceDoc) -> int:
+    """信息完整度：正文越长、元数据越全，得分越高，去重时保留高分者。"""
+    score = len((d.text or "").strip())
+    if d.year:
+        score += 1000
+    if d.url:
+        score += 500
+    if d.journal:
+        score += 500
+    if d.doi:
+        score += 300
+    score += len(d.tags) * 100
+    return score
+
+
 def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
-    【待完善】按 DOI 优先、其次标题归一化，对证据文档强去重。
+    按 DOI 优先、其次标题归一化，对证据文档强去重。
 
     参数:
         docs: 合并后的证据文档列表。
@@ -119,7 +149,18 @@ def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     作用:
         减少同一文献多源重复进入知识库，降低检索噪声。
     """
-    raise NotImplementedError("待队员实现：dedupe_by_doi_or_title")
+    seen: dict[str, EvidenceDoc] = {}
+    for d in docs:
+        if d.doi:
+            key = f"doi:{_norm_doi(d.doi)}"
+        else:
+            key = f"title:{_norm_title(d.title)}"
+        if key in ("doi:", "title:"):  # 无有效 DOI/标题，不参与去重
+            key = f"id:{d.doc_id}"
+        prev = seen.get(key)
+        if prev is None or _completeness(d) > _completeness(prev):
+            seen[key] = d
+    return list(seen.values())
 
 
 def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
