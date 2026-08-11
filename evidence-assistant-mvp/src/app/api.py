@@ -31,6 +31,7 @@ from src.app.openwebui import (
     chat_completions,
     model_list,
 )
+from src.app.settings_api import router as settings_router
 from src.kb.store import export_store_stats
 from src.tracks.prompt_profiles import PROMPT_VERSION, public_track_configs
 from src.tracks.eval_bench import run_benchmark
@@ -50,6 +51,7 @@ app.add_middleware(
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 app.mount("/assets", StaticFiles(directory=str(STATIC_DIR)), name="assets")
+app.include_router(settings_router)
 
 ETHICS = (
     "本系统仅用于学习与演示，不用于真实诊疗，不处理真实患者隐私信息。"

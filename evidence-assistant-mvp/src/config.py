@@ -14,6 +14,7 @@ from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src import PROJECT_ROOT
+from src.runtime_config import RuntimeConfigError, load_runtime_config
 
 
 class Settings(BaseSettings):
@@ -85,7 +86,21 @@ def get_settings() -> Settings:
     返回:
         Settings: 已加载的配置对象。
     """
-    return Settings()
+    settings = Settings()
+    try:
+        runtime = load_runtime_config()
+    except RuntimeConfigError:
+        # 配置页可继续打开，坏文件不会让整个 RAG 服务无法启动；后续可在页面中恢复 .env。
+        runtime = None
+    if runtime is not None:
+        settings = settings.model_copy(update=runtime.as_settings_overrides())
+    return settings
+
+
+def clear_settings_cache() -> None:
+    """让前端保存的新配置在当前进程内立即生效。"""
+
+    get_settings.cache_clear()
 
 
 # ---------------------------------------------------------------------------
