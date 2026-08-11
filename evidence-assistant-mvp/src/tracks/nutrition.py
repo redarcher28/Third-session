@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 赛道二：健康营养助手 —— 人格、风格与口语归一改写。
+
+产品边界：面向普通消费者，只谈饮食与生活方式的一般建议；
+绝不输出具体药量/剂量/服药方案，此类问题直接通俗拒答。
 """
 
 from __future__ import annotations
+
+import re
 
 from src.llm import get_llm
 
@@ -11,17 +16,74 @@ from src.llm import get_llm
 NUTRITION_PERSONA = (
     "你是面向普通消费者的「健康营养助手」。"
     "把专业证据转成可理解的科普，语气友好、可执行，强调非诊疗。"
-    "避免开药、给剂量或替代医生就诊。"
+    "绝不给具体药量、剂量或服药方案（如「每天吃X片」「每次X毫克」），"
+    "涉及用药的问题一律建议咨询医生/药师；只谈饮食与生活方式的一般建议。"
 )
 
 # 科普回答结构约束
 NUTRITION_STYLE = (
     "结构：通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医；"
+    "多用「研究提示」「可能有助于」等表述，说明边界与局限；"
     "少用术语，必要时括号解释；引用仍用 [n]。"
 )
 
 # 营养赛道检索时加权的标签
 BOOST_TAGS = ["diet", "mediterranean", "hypertension", "hyperlipidemia", "diabetes"]
+
+# 问药量/剂量时的通俗拒答（面向普通群众的口吻）
+NUTRITION_DOSAGE_REFUSAL = (
+    "这个问题涉及具体用药剂量，我不能替你开处方或给用药方案。\n\n"
+    "如果你在问自己或家人的服药问题：请带上检查报告和正在吃的药，"
+    "咨询执业医师或药师，不要自行增减药量。\n"
+    "我可以帮你了解饮食与生活方式管理的一般知识，"
+    "比如血压高的人饮食上可以注意什么、地中海饮食怎么搭配。"
+)
+
+# 问药量/剂量/停药/减药的问题关键词：命中即通俗拒答（确定性规则，不依赖 LLM）
+# 对应材料规则 4「问吃药/停药 → 安全拒答」；克/g 不在此列——
+# 「每天吃几克盐」属饮食建议可正常回答，药量禁区以 mg/片/粒/单位/停药减药为主
+_DOSAGE_PATTERNS = [
+    r"药量|剂量|服药方案|怎么吃(这|那个)?药|用药量",
+    r"吃(多少|几)药",
+    r"(几片|几粒|多少片|多少粒|每天\d+片|一次\d+粒)",
+    r"\d+\s*(mg|毫克|片|粒|单位)\s*(怎么|多少|几次|服用|吃)",
+    r"(胰岛素|降糖药|降压药|他汀).{0,12}(多少|几|剂量|用量|单位)",
+    r"一天(吃|服|用)(几|多少|几次|\d+次|\d+片|\d+粒)",
+    r"(停|减|换|加)药|药量(减半|调整|减少)|停药|减量|增量|加量",
+    r"能(不能)?(停|减|换)药",
+    r"药.{0,2}(吃|服)(多久|几天|多长时间|能不能停)",
+]
+
+# 医学术语 → 通俗说法（长词在前，避免子串误替换）
+_TERM_MAP = {
+    "低密度脂蛋白胆固醇（LDL-C）": "低密度脂蛋白胆固醇（俗称「坏胆固醇」）",
+    "高密度脂蛋白胆固醇（HDL-C）": "高密度脂蛋白胆固醇（俗称「好胆固醇」）",
+    "低密度脂蛋白胆固醇": "低密度脂蛋白胆固醇（「坏胆固醇」）",
+    "高密度脂蛋白胆固醇": "高密度脂蛋白胆固醇（「好胆固醇」）",
+    "LDL-C": "「坏胆固醇」",
+    "HDL-C": "「好胆固醇」",
+    "收缩压": "收缩压（血压读数里的「高压」）",
+    "舒张压": "舒张压（血压读数里的「低压」）",
+    "随机对照试验": "随机对照试验（严格对比效果的临床试验，证据强度较高）",
+    "荟萃分析": "荟萃分析（把多项研究结果合并统计，结论更稳）",
+    "系统性综述": "系统性综述（系统收集某主题全部研究的综述）",
+    "systematic review": "系统性综述（系统收集某主题全部研究的综述）",
+    "meta-analysis": "荟萃分析（把多项研究结果合并统计）",
+    "甘油三酯": "甘油三酯（血液里的一种脂肪）",
+    "心脑血管事件": "心脑血管事件（如心梗、中风等严重问题）",
+    "心血管事件": "心血管事件（如心梗、中风等严重问题）",
+    "心血管结局": "心血管结局（如心梗、中风等终点事件）",
+    "心血管风险": "心血管风险（发生心梗、中风等问题的风险）",
+    "饱和脂肪": "饱和脂肪（肥肉、动物油里较多的脂肪）",
+    "反式脂肪": "反式脂肪（油炸食品、加工零食里常见的坏脂肪）",
+    "依从性": "依从性（能否长期坚持）",
+    "膳食纤维": "膳食纤维（蔬果全谷物里的粗纤维）",
+    "危险因素": "危险因素（增加患病风险的因素）",
+}
+
+# 「你可以怎么做」建议句的动作词与禁止词
+_ACTION_WORDS = ["建议", "推荐", "应", "可", "避免", "减少", "增加", "限制", "坚持", "选择", "注意", "有助于", "需要"]
+_BANNED_IN_TIP = ["剂量", "毫克", "mg", "服药", "吃药", "用药", "几片", "几粒", "单位"]
 
 
 def rewrite_nutrition_query(question: str) -> str:
@@ -49,30 +111,26 @@ def rewrite_nutrition_query(question: str) -> str:
     return llm.chat(messages, temperature=0, max_tokens=120).strip() or question
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】营养赛道科普增强（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
-def build_nutrition_action_tips(contexts: list[dict]) -> list[str]:
+def detect_dosage_request(question: str) -> bool:
     """
-    【待完善】从证据中提炼面向消费者的可执行建议条目。
+    判断问题是否在索要具体药量/剂量（确定性规则，不依赖 LLM）。
 
     参数:
-        contexts: 检索证据列表。
+        question: 用户原问题。
 
     返回:
-        list[str]: 3~5 条「你可以怎么做」提示（禁止开药剂量）。
+        bool: True 表示应通俗拒答并转介医生/药师。
 
     作用:
-        强化营养赛道可读性与行动性，同时保持可追溯。
+        产品边界硬拦截：赛道二绝不输出药量，防止演示事故。
     """
-    raise NotImplementedError("待队员实现：build_nutrition_action_tips")
+    q = question.lower()
+    return any(re.search(p, q) for p in _DOSAGE_PATTERNS)
 
 
 def simplify_medical_terms(text: str) -> str:
     """
-    【待完善】把回答中的专业术语改写成更通俗的说法（可附括号注释）。
+    把回答中的专业术语改写成更通俗的说法（可附括号注释）。
 
     参数:
         text: 待改写文本。
@@ -83,4 +141,61 @@ def simplify_medical_terms(text: str) -> str:
     作用:
         拉大与临床赛道的可读性差异，突出赛道二产品定位。
     """
-    raise NotImplementedError("待队员实现：simplify_medical_terms")
+    out = text
+    for term, plain in _TERM_MAP.items():
+        if term in out:
+            out = out.replace(term, plain)
+    return out
+
+
+def flag_dosage_in_answer(text: str) -> bool:
+    """
+    防御性检查：生成结果是否仍含具体药量表述。
+
+    参数:
+        text: 生成后的回答文本。
+
+    返回:
+        bool: True 表示需要追加「以医生/药师意见为准」警示。
+    """
+    if not re.search(r"\d+(\.\d+)?\s*(mg|毫克|克|g|片|粒|单位)", text):
+        return False
+    return any(k in text for k in ("服药", "吃药", "用药", "剂量", "每次", "每天服用", "每日服用"))
+
+
+def build_nutrition_action_tips(contexts: list[dict]) -> list[str]:
+    """
+    从证据中提炼面向消费者的可执行建议条目。
+
+    创新点：
+        - 动作句提取：只保留含「建议/应/避免/减少/限制/坚持」等动作词的句子；
+        - 剂量禁入：含药量表述的句子一律剔除，守住产品边界；
+        - 去重 + 截断，稳定输出 3~5 条「你可以怎么做」。
+
+    参数:
+        contexts: 检索证据列表。
+
+    返回:
+        list[str]: 3~5 条「你可以怎么做」提示（禁止开药剂量）。
+
+    作用:
+        强化营养赛道可读性与行动性，同时保持可追溯。
+    """
+    tips: list[str] = []
+    seen: set[str] = set()
+    for c in contexts:
+        text = str(c.get("text") or "")
+        for sent in re.split(r"(?<=[。！？!?；;])", text):
+            sent = sent.strip()
+            if not sent or any(w in sent for w in _BANNED_IN_TIP):
+                continue
+            if not any(w in sent for w in _ACTION_WORDS):
+                continue
+            key = re.sub(r"\s+", "", sent)[:60]
+            if key in seen:
+                continue
+            seen.add(key)
+            tips.append(sent[:120])
+            if len(tips) >= 5:
+                return tips
+    return tips

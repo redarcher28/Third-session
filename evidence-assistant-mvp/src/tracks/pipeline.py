@@ -25,9 +25,13 @@ from src.tracks.clinical import (
 )
 from src.tracks.nutrition import (
     BOOST_TAGS,
+    NUTRITION_DOSAGE_REFUSAL,
     NUTRITION_PERSONA,
     NUTRITION_STYLE,
+    detect_dosage_request,
+    flag_dosage_in_answer,
     rewrite_nutrition_query,
+    simplify_medical_terms,
 )
 
 logger = logging.getLogger(__name__)
@@ -141,6 +145,17 @@ def ask(
     retriever = retriever or HybridRetriever()
 
     if track == "nutrition":
+        # 产品边界：问具体药量/剂量的问题直接通俗拒答，不走检索生成
+        if detect_dosage_request(question):
+            return AskResponse(
+                answer=NUTRITION_DOSAGE_REFUSAL + DISCLAIMER,
+                citations=[],
+                contexts=[],
+                refused=True,
+                rewritten_query=question,
+                track=track,
+                citation_check={"ok": True, "has_citations": False, "reason": "dosage_request"},
+            )
         rewritten = rewrite_nutrition_query(question)
         persona, style = NUTRITION_PERSONA, NUTRITION_STYLE
         prefer, boost = None, BOOST_TAGS
@@ -179,6 +194,13 @@ def ask(
     check = verify_citations(answer, contexts)
     if not refused:
         answer = strip_invalid_claims(answer, check)
+    # 营养赛道后处理：术语通俗化 + 药量防御警示（面向普通群众的产品边界）
+    if not refused and track == "nutrition":
+        answer = simplify_medical_terms(answer)
+        if flag_dosage_in_answer(answer):
+            answer = answer.rstrip() + (
+                "\n\n> ⚠️ 如涉及具体药量/剂量，请以医生或药师的意见为准，切勿自行调整。"
+            )
 
     ctx_citations = [
         Citation(
