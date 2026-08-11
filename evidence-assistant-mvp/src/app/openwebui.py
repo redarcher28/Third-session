@@ -238,12 +238,60 @@ def _source_footer(
     return "\n".join(lines)
 
 
-def _render_rag_answer(result: AskResponse) -> str:
-    """渲染回答，并保留旧证据台的来源卡片与检索摘要。"""
+def _source_event(citations: list[Citation]) -> str:
+    """构造 Open WebUI 原生 Sources 事件。
+
+    Open WebUI 会把 ``event.type=source`` 从上游 SSE 转成当前消息的
+    ``sources``，其中 ``document`` 与 ``metadata`` 按位置一一对应。这样
+    来源可以进入前端的 Sources 面板，回答正文只保留 ``[n]`` 对照编号，
+    不必重复打印完整证据卡片。
+    """
+
+    if not citations:
+        return ""
+
+    documents: list[str] = []
+    metadata: list[dict[str, Any]] = []
+    for citation in citations:
+        title = _single_line(citation.title, citation.doc_id or "未命名来源")
+        url = citation.url.strip()
+        locator = url or citation.doc_id or f"evidence-{citation.index}"
+        documents.append(citation.snippet.strip() or title)
+        metadata.append(
+            {
+                "source": locator,
+                "name": f"[{citation.index}] {title}",
+                "url": url,
+                "doc_id": citation.doc_id,
+                "evidence_level": citation.evidence_level,
+                "source_type": citation.source,
+                "year": citation.year,
+            }
+        )
+
+    payload = {
+        "event": {
+            "type": "source",
+            "data": {
+                "source": {
+                    "id": "evidence-assistant-rag",
+                    "name": "证据助手 · 本次 RAG 来源",
+                    "type": "evidence",
+                },
+                "document": documents,
+                "metadata": metadata,
+            },
+        }
+    }
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _render_rag_answer(result: AskResponse, *, include_sources: bool = True) -> str:
+    """渲染回答；流式 Open WebUI 可把来源改走原生 Sources 面板。"""
 
     answer = result.answer.strip() or "当前没有可展示的回答。"
     contexts = result.contexts or result.citations
-    if contexts or result.retrieval:
+    if include_sources and (contexts or result.retrieval):
         answer += _source_footer(
             contexts,
             retrieval=result.retrieval,
@@ -332,7 +380,11 @@ def _stream_rag_answer(
     # SSE 注释不会进入回答正文，但会让客户端立即收到响应头和连接状态。
     yield ": evidence-assistant retrieval-started\n\n"
     result = ask(question, track=track, top_k=5, use_live_tools=False)
-    answer = _render_rag_answer(result)
+    contexts = result.contexts or result.citations
+    source_event = _source_event(contexts)
+    if source_event:
+        yield source_event
+    answer = _render_rag_answer(result, include_sources=False)
     yield from _stream_payloads(
         response_id=response_id,
         created=created,

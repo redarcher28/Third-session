@@ -7,11 +7,17 @@ Open WebUI 回显”的连接关系，不写入 A 组知识库或 Chroma 数据�
 
 from __future__ import annotations
 
+import json
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.app.openwebui import OpenAIChatRequest, OpenAIMessage, chat_completions
+from src.app.openwebui import (
+    OpenAIChatRequest,
+    OpenAIMessage,
+    _stream_rag_answer,
+    chat_completions,
+)
 from src.generation.answer import generate_answer
 from src.models import AskResponse, Citation
 from src.retrieval.hybrid import _tokenize
@@ -181,6 +187,60 @@ class RagContractTests(unittest.TestCase):
         self.assertIn("来源分布：local 1 条", content)
         self.assertIn("### 引用校验", content)
         self.assertIn("https://example.test/hypertension-guideline", content)
+        mocked_ask.assert_called_once_with(
+            "高血压为什么有时需要长期管理？",
+            track="clinical",
+            top_k=5,
+            use_live_tools=False,
+        )
+
+    def test_openwebui_stream_emits_native_sources_without_repeating_footer(self) -> None:
+        citation = _citation()
+        result = AskResponse(
+            answer="证据支持长期管理有助于控制相关风险[1]。",
+            citations=[citation],
+            contexts=[citation],
+            track="clinical",
+            prompt_version="test-version",
+            retrieval={"retrieved_count": 1},
+            citation_check={"ok": True, "used_brackets": [1]},
+        )
+
+        with patch("src.app.openwebui.ask", return_value=result) as mocked_ask:
+            frames = list(
+                _stream_rag_answer(
+                    response_id="chatcmpl-test",
+                    created=1,
+                    model="evidence-clinical",
+                    question="高血压为什么有时需要长期管理？",
+                    track="clinical",
+                )
+            )
+
+        payloads = []
+        for frame in frames:
+            if not frame.startswith("data: "):
+                continue
+            raw = frame[len("data: ") :].strip()
+            if raw != "[DONE]":
+                payloads.append(json.loads(raw))
+
+        source_payload = next(payload for payload in payloads if "event" in payload)
+        source = source_payload["event"]
+        self.assertEqual(source["type"], "source")
+        self.assertEqual(len(source["data"]["document"]), 1)
+        self.assertEqual(len(source["data"]["metadata"]), 1)
+        self.assertEqual(
+            source["data"]["metadata"][0]["url"],
+            "https://example.test/hypertension-guideline",
+        )
+        answer_text = "".join(
+            payload.get("choices", [{}])[0].get("delta", {}).get("content", "")
+            for payload in payloads
+            if payload.get("object") == "chat.completion.chunk"
+        )
+        self.assertIn("[1]", answer_text)
+        self.assertNotIn("### 证据来源", answer_text)
         mocked_ask.assert_called_once_with(
             "高血压为什么有时需要长期管理？",
             track="clinical",
