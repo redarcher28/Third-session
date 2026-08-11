@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -48,7 +49,13 @@ def runtime_config_path() -> Path:
     configured = os.environ.get("EVIDENCE_RUNTIME_CONFIG", "").strip()
     if configured:
         return Path(configured).expanduser()
-    return Path.home() / "Library" / "Application Support" / "evidence-assistant-mvp" / "llm_runtime.json"
+    if sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support"
+    elif os.name == "nt":
+        root = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    else:
+        root = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+    return root / "evidence-assistant-mvp" / "llm_runtime.json"
 
 
 def load_runtime_config() -> RuntimeLLMConfig | None:

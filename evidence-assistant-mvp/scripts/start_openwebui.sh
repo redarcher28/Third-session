@@ -5,9 +5,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-BACKEND_ENV_PREFIX="${EVIDENCE_BACKEND_ENV:-/Users/quentincrane/conda_envs/evidence_mvp}"
-OPENWEBUI_ENV_PREFIX="${OPENWEBUI_ENV:-/Users/quentincrane/conda_envs/open_webui}"
-OPENWEBUI_DATA_DIR="${OPENWEBUI_DATA_DIR:-/Users/quentincrane/conda_envs/open_webui_data}"
+BACKEND_ENV_SPEC="${EVIDENCE_BACKEND_ENV:-${EVIDENCE_BACKEND_ENV_NAME:-evidence_mvp}}"
+OPENWEBUI_ENV_SPEC="${OPENWEBUI_ENV:-${OPENWEBUI_ENV_NAME:-open_webui}}"
+if [[ -n "${OPENWEBUI_DATA_DIR:-}" ]]; then
+  : "${OPENWEBUI_DATA_DIR}"
+elif [[ -d "${HOME}/conda_envs/open_webui_data" ]]; then
+  # 兼容本项目此前在 macOS 上使用的外置数据目录；新电脑走下面的系统默认目录。
+  OPENWEBUI_DATA_DIR="${HOME}/conda_envs/open_webui_data"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  OPENWEBUI_DATA_DIR="${HOME}/Library/Application Support/evidence-assistant-mvp/openwebui"
+else
+  OPENWEBUI_DATA_DIR="${XDG_DATA_HOME:-${HOME}/.local/share}/evidence-assistant-mvp/openwebui"
+fi
 BACKEND_HOST="${EVIDENCE_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${EVIDENCE_BACKEND_PORT:-8000}"
 OPENWEBUI_HOST="${OPENWEBUI_HOST:-127.0.0.1}"
@@ -15,13 +24,31 @@ OPENWEBUI_PORT="${OPENWEBUI_PORT:-8080}"
 OPENWEBUI_NAME="${OPENWEBUI_NAME:-证据台}"
 EVIDENCE_SETTINGS_URL="${EVIDENCE_SETTINGS_URL:-http://$BACKEND_HOST:$BACKEND_PORT/settings}"
 
-if [[ ! -x "$BACKEND_ENV_PREFIX/bin/uvicorn" ]]; then
-  echo "缺少后端 Conda 环境或 uvicorn：$BACKEND_ENV_PREFIX" >&2
+if [[ "$BACKEND_ENV_SPEC" == /* || "$BACKEND_ENV_SPEC" == ./* || "$BACKEND_ENV_SPEC" == ../* ]]; then
+  BACKEND_CONDA_ARGS=(-p "$BACKEND_ENV_SPEC")
+else
+  BACKEND_CONDA_ARGS=(-n "$BACKEND_ENV_SPEC")
+fi
+if [[ "$OPENWEBUI_ENV_SPEC" == /* || "$OPENWEBUI_ENV_SPEC" == ./* || "$OPENWEBUI_ENV_SPEC" == ../* ]]; then
+  OPENWEBUI_CONDA_ARGS=(-p "$OPENWEBUI_ENV_SPEC")
+else
+  OPENWEBUI_CONDA_ARGS=(-n "$OPENWEBUI_ENV_SPEC")
+fi
+
+if ! command -v conda >/dev/null 2>&1; then
+  echo "找不到 conda；请先安装 Miniconda/Anaconda 或 Miniforge。" >&2
   exit 1
 fi
-if [[ ! -x "$OPENWEBUI_ENV_PREFIX/bin/open-webui" ]]; then
-  echo "缺少 OpenWebUI Conda 环境：$OPENWEBUI_ENV_PREFIX" >&2
-  echo "请先安装：conda run -p $OPENWEBUI_ENV_PREFIX python -m pip install open-webui" >&2
+if ! conda run --no-capture-output "${BACKEND_CONDA_ARGS[@]}" \
+    python -c 'import uvicorn' >/dev/null 2>&1; then
+  echo "缺少后端 Conda 环境或 uvicorn：$BACKEND_ENV_SPEC" >&2
+  echo "请先创建环境并安装 requirements.txt。" >&2
+  exit 1
+fi
+if ! conda run --no-capture-output "${OPENWEBUI_CONDA_ARGS[@]}" \
+    python -c 'import importlib.util, sys; sys.exit(0 if importlib.util.find_spec("open_webui") else 1)' >/dev/null 2>&1; then
+  echo "缺少 OpenWebUI Conda 环境或 open-webui：$OPENWEBUI_ENV_SPEC" >&2
+  echo "请先安装：conda run ${OPENWEBUI_CONDA_ARGS[*]} python -m pip install open-webui" >&2
   exit 1
 fi
 
@@ -31,7 +58,8 @@ if [[ -s "$SECRET_FILE" ]]; then
   WEBUI_SECRET_KEY="$(<"$SECRET_FILE")"
 else
   umask 077
-  WEBUI_SECRET_KEY="$("$OPENWEBUI_ENV_PREFIX/bin/python" -c 'import secrets; print(secrets.token_urlsafe(48))')"
+  WEBUI_SECRET_KEY="$(conda run --no-capture-output "${OPENWEBUI_CONDA_ARGS[@]}" \
+    python -c 'import secrets; print(secrets.token_urlsafe(48))')"
   printf '%s' "$WEBUI_SECRET_KEY" > "$SECRET_FILE"
 fi
 
@@ -49,7 +77,7 @@ trap cleanup INT TERM EXIT
 cd "$PROJECT_ROOT"
 
 echo "启动证据助手后端：http://$BACKEND_HOST:$BACKEND_PORT"
-conda run --no-capture-output -p "$BACKEND_ENV_PREFIX" \
+conda run --no-capture-output "${BACKEND_CONDA_ARGS[@]}" \
   uvicorn src.app.api:app --host "$BACKEND_HOST" --port "$BACKEND_PORT" &
 BACKEND_PID=$!
 
@@ -73,7 +101,7 @@ WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" \
 RAG_EMBEDDING_ENGINE="openai" \
 RAG_EMBEDDING_MODEL="evidence-embedding" \
 BYPASS_EMBEDDING_AND_RETRIEVAL="true" \
-conda run --no-capture-output -p "$OPENWEBUI_ENV_PREFIX" \
+conda run --no-capture-output "${OPENWEBUI_CONDA_ARGS[@]}" \
   open-webui serve --host "$OPENWEBUI_HOST" --port "$OPENWEBUI_PORT" &
 OPENWEBUI_PID=$!
 
@@ -81,7 +109,7 @@ OPENWEBUI_PID=$!
 # banner、示例提问和 Arena 开关，不覆盖现有账号的其他配置。
 for _ in {1..30}; do
   if curl -fsS "http://$OPENWEBUI_HOST:$OPENWEBUI_PORT/api/config" >/dev/null 2>&1; then
-    conda run --no-capture-output -p "$OPENWEBUI_ENV_PREFIX" \
+    conda run --no-capture-output "${OPENWEBUI_CONDA_ARGS[@]}" \
       python "$PROJECT_ROOT/scripts/configure_openwebui.py" \
         --data-dir "$OPENWEBUI_DATA_DIR" --settings-url "$EVIDENCE_SETTINGS_URL" \
       || echo "提示：Open WebUI 证据台配置合并失败，可稍后手动重跑 configure_openwebui.py" >&2
