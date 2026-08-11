@@ -38,14 +38,23 @@ conda run -p /Users/quentincrane/conda_envs/evidence_mvp \
 cp .env.example .env
 ```
 
-编辑 `.env`，填入 OpenAI 兼容接口：
+编辑 `.env`，默认按 AgentRouter 的 Claude Messages 接口配置；只需填入令牌：
 
 ```env
-LLM_API_KEY=sk-...
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o-mini
-EMBEDDING_MODEL=text-embedding-3-small
+LLM_API_FORMAT=anthropic
+LLM_API_KEY=你的 AgentRouter token
+LLM_BASE_URL=https://co.agentrouter.org
+LLM_MODEL=claude-opus-5
+EMBEDDING_MODE=local
 ```
+
+Claude 的 Base URL 不要加 `/v1`。如果你的 AgentRouter 账号模型列表中没有
+`claude-opus-5`，只改 `.env` 的 `LLM_MODEL` 为 `/v1/models` 返回的实际 ID；切换到
+其他 OpenAI-compatible 服务时，把 `LLM_API_FORMAT` 改为 `openai`，同时修改
+`LLM_BASE_URL`、`LLM_MODEL` 和（需要时）`EMBEDDING_MODE` 即可，不用改前端或 RAG 代码。
+
+Claude 不提供本项目所需的 OpenAI Embeddings，因此 `EMBEDDING_MODE=local` 会使用本地
+哈希向量并让中文 bigram BM25 负责关键词召回；这样 AgentRouter 只需要一个 token。
 
 未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
 
@@ -142,11 +151,13 @@ flowchart LR
 ```
 
 没有配置有效 `LLM_API_KEY` 时，检索、引用映射和校验仍会真实运行，但生成文本是离线
-占位回答；正式演示需要在项目 `.env` 中配置可用的 OpenAI-compatible LLM。
+占位回答；正式演示需要在项目 `.env` 中配置可用的 Claude/Anthropic 或 OpenAI-compatible
+LLM。
 
 LLM 调用统一收口在 [`src/llm.py`](src/llm.py)：`LLMClient.chat()` 负责查询改写、重排和
 回答生成，`LLMClient.embed()` 负责建库/在线向量查询，配置来自 `.env` 的
-`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `EMBEDDING_MODEL`。调用链是：
+`LLM_API_FORMAT`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`EMBEDDING_MODE` 和
+`EMBEDDING_MODEL`。调用链是：
 `src/app/openwebui.py` → `src/tracks/pipeline.py::ask` → 赛道改写/检索 →
 `src/generation/answer.py::generate_answer` → `src/llm.py`。
 
