@@ -5,12 +5,16 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
 
 from src.llm import get_llm
 from src.models import Citation
 from src.tracks.prompt_profiles import build_synthesis_messages
+
+
+logger = logging.getLogger(__name__)
 
 
 # 证据不足时的标准拒答文案
@@ -25,6 +29,11 @@ DISCLAIMER = (
     "\n\n---\n"
     "**声明**：本回答仅供学习与研究演示，不构成医疗建议，不能替代执业医师诊断与治疗。"
     "引用内容请人工复核原文。"
+)
+
+MODEL_UNAVAILABLE_TEMPLATE = (
+    "当前模型服务暂时不可用，本次未生成综合回答。下面仅列出本次 RAG 实际召回的证据片段；"
+    "请稍后重试，或先人工核对来源。"
 )
 
 
@@ -76,6 +85,17 @@ def format_context_block(citations: list[Citation]) -> str:
     return "\n\n".join(lines)
 
 
+def _evidence_only_fallback(citations: list[Citation]) -> str:
+    """模型上游不可用时，返回明确标注的证据-only 结果。"""
+
+    lines = [MODEL_UNAVAILABLE_TEMPLATE]
+    for citation in citations:
+        title = citation.title or citation.doc_id or "未命名来源"
+        snippet = citation.snippet or "暂无可展示的证据片段"
+        lines.append(f"[{citation.index}] {title}：{snippet}")
+    return "\n\n".join(lines)
+
+
 def generate_answer(
     question: str,
     contexts: list[dict[str, Any]],
@@ -113,7 +133,16 @@ def generate_answer(
         answer_style=answer_style,
     )
     llm = get_llm()
-    answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
+    try:
+        answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
+    except Exception as exc:
+        # 不把供应商响应正文写入日志，避免令牌/请求内容随异常外泄；证据仍然
+        # 可以通过 Sources 面板展示，但必须明确告诉用户没有完成模型综合。
+        logger.warning(
+            "LLM synthesis unavailable; returning evidence-only fallback (%s)",
+            type(exc).__name__,
+        )
+        return _evidence_only_fallback(citations) + DISCLAIMER, citations, True
     if DISCLAIMER.strip() not in answer:
         answer = answer.rstrip() + DISCLAIMER
     return answer, citations, False

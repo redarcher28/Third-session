@@ -62,6 +62,11 @@ class _FakeLLM:
         return "证据支持长期管理有助于控制相关风险[1]。"
 
 
+class _UnavailableLLM:
+    def chat(self, messages: list[dict[str, str]], **_: object) -> str:
+        raise RuntimeError("upstream unavailable")
+
+
 class _FakeRetriever:
     def __init__(self, contexts: list[dict[str, object]]) -> None:
         self.contexts = contexts
@@ -107,6 +112,22 @@ class RagContractTests(unittest.TestCase):
         self.assertIn("[1]", answer)
         self.assertEqual(citations[0].doc_id, "local:hypertension-guideline")
         self.assertFalse(refused)
+
+    def test_generation_returns_evidence_only_when_model_provider_is_unavailable(self) -> None:
+        with patch("src.generation.answer.get_llm", return_value=_UnavailableLLM()):
+            answer, citations, refused = generate_answer(
+                "高血压为什么有时需要长期管理？",
+                [_context()],
+                system_persona="临床证据助手",
+                answer_style="结论与证据概览",
+                track="clinical",
+            )
+
+        self.assertTrue(refused)
+        self.assertEqual(len(citations), 1)
+        self.assertIn("模型服务暂时不可用", answer)
+        self.assertIn("[1]", answer)
+        self.assertIn("高血压管理指南摘要", answer)
 
     def test_pipeline_connects_rewrite_retrieval_generation_and_validation(self) -> None:
         retriever = _FakeRetriever([_context()])
