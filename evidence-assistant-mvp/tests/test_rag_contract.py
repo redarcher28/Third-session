@@ -16,7 +16,7 @@ from src.models import AskResponse, Citation
 from src.retrieval.hybrid import _tokenize
 from src.tracks.pipeline import ask
 from src.tracks.prompt_profiles import build_synthesis_messages
-from src.tracks.nutrition import append_nutrition_query_aliases
+from src.tracks.nutrition import append_nutrition_query_aliases, detect_dosage_request
 
 
 def _citation(index: int = 1) -> Citation:
@@ -174,6 +174,19 @@ class RagContractTests(unittest.TestCase):
         self.assertIn("dietary fiber whole grains cardiovascular risk", rewritten)
         self.assertIn("膳食", tokens)
         self.assertIn("食纤", tokens)
+
+    def test_nutrition_dosage_request_is_blocked_before_llm(self) -> None:
+        question = "我每天应该服用多少毫克降压药？"
+        self.assertTrue(detect_dosage_request(question))
+
+        retriever = _FakeRetriever([])
+        with patch("src.tracks.pipeline.rewrite_nutrition_query") as rewrite:
+            response = ask(question, track="nutrition", retriever=retriever)
+
+        self.assertTrue(response.refused)
+        self.assertEqual(response.citation_check["reason"], "dosage_request")
+        self.assertEqual(retriever.query, "")
+        rewrite.assert_not_called()
 
     def test_rebuilt_latest_main_corpus_is_available_to_rag(self) -> None:
         from src.kb.store import EvidenceStore
