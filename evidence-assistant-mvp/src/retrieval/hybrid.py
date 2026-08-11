@@ -13,6 +13,7 @@ from rank_bm25 import BM25Okapi
 
 from src.kb.store import EvidenceStore
 from src.llm import get_llm
+from src.tracks.prompt_profiles import build_rerank_messages
 
 logger = logging.getLogger(__name__)
 
@@ -161,24 +162,7 @@ class HybridRetriever:
             list[dict]: 重排后的前 top_k 条；失败则按原序截断。
         """
         llm = get_llm()
-        lines = []
-        for i, c in enumerate(candidates, start=1):
-            lines.append(
-                f"[{i}] {c.get('title', '')}\n{(c.get('text') or '')[:280]}"
-            )
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "你是检索重排器。根据用户问题对候选证据按相关性排序，"
-                    "只输出逗号分隔的编号，例如：3,1,5,2。不要解释。"
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"问题：{query}\n\n候选：\n" + "\n\n".join(lines),
-            },
-        ]
+        messages = build_rerank_messages(query, candidates)
         try:
             raw = llm.chat(messages, temperature=0, max_tokens=80)
             nums = [int(x) for x in re.findall(r"\d+", raw)]

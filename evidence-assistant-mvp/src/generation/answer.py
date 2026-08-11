@@ -10,6 +10,7 @@ from typing import Any
 
 from src.llm import get_llm
 from src.models import Citation
+from src.tracks.prompt_profiles import build_synthesis_messages
 
 
 # 证据不足时的标准拒答文案
@@ -81,6 +82,7 @@ def generate_answer(
     *,
     system_persona: str,
     answer_style: str,
+    track: str = "clinical",
 ) -> tuple[str, list[Citation], bool]:
     """
     基于检索证据生成带引用回答；无证据则拒答。
@@ -90,6 +92,7 @@ def generate_answer(
         contexts: 检索证据 dict 列表。
         system_persona: 赛道人格系统提示。
         answer_style: 回答风格约束说明。
+        track: 赛道 key，用于加载统一 synthesis Prompt。
 
     返回:
         tuple:
@@ -102,31 +105,13 @@ def generate_answer(
         return REFUSAL_TEMPLATE + DISCLAIMER, [], True
 
     context_block = format_context_block(citations)
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                f"{system_persona}\n\n"
-                "硬性规则：\n"
-                "1. 只能依据给定证据作答，禁止编造文献、PMID、NCT 或链接，不能用训练知识补全。\n"
-                "2. 关键结论句末使用 [n] 引用编号，n 必须来自证据列表。\n"
-                "3. 若证据不足以回答，明确说明证据不足，不要猜测。\n"
-                "4. 证据来源少于 3 个时，用「研究提示」「可能」等弱化表述，不下确定结论。\n"
-                "5. 证据冲突时并列呈现并说明不一致，不选边、不私自修正成唯一答案。\n"
-                "6. 问题超出范围时明确说明边界并拒绝猜测。\n"
-                "7. 文末用「参考文献」列出用到的 [n]。\n"
-                f"8. 回答风格：{answer_style}\n"
-            ),
-        },
-        {
-            "role": "user",
-            "content": (
-                f"用户问题：{question}\n\n"
-                f"证据列表：\n{context_block}\n\n"
-                "请给出带引用的回答。"
-            ),
-        },
-    ]
+    messages = build_synthesis_messages(
+        track,
+        question,
+        context_block,
+        system_persona=system_persona,
+        answer_style=answer_style,
+    )
     llm = get_llm()
     answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
     if DISCLAIMER.strip() not in answer:

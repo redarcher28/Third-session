@@ -66,10 +66,10 @@ class Citation(BaseModel):
 class AskRequest(BaseModel):
     """HTTP / 内部问答请求体。"""
 
-    question: str  # 用户原问题
+    question: str = Field(min_length=1)  # 用户原问题
     track: Literal["clinical", "nutrition"] = "clinical"  # 赛道
     use_live_tools: bool = False  # 是否启用在线补检索
-    top_k: int = 5  # 最终采用的证据条数
+    top_k: int = Field(default=5, ge=3, le=8)  # 最终采用的证据条数
 
 
 class AskResponse(BaseModel):
@@ -81,4 +81,6 @@ class AskResponse(BaseModel):
     refused: bool = False  # 是否因证据不足/越界拒答
     rewritten_query: str = ""  # 检索用改写查询
     track: str = "clinical"  # 实际使用的赛道
+    prompt_version: str = ""  # 赛道 Prompt 栈版本
+    retrieval: dict[str, Any] = Field(default_factory=dict)  # 检索摘要与来源分布
     citation_check: dict[str, Any] = Field(default_factory=dict)  # 引用校验明细

@@ -6,22 +6,14 @@
 from __future__ import annotations
 
 from src.llm import get_llm
+from src.tracks.prompt_profiles import build_query_messages, get_track_profile
 
-# 面向医生/医学生的系统人格
-CLINICAL_PERSONA = (
-    "你是面向临床医生与医学生的「临床证据助手」。"
-    "回答应专业、结构化：结论 → 证据等级 → 关键研究/指南 → 局限。"
-    "优先引用指南、荟萃分析与 RCT。"
-)
+_PROFILE = get_track_profile("clinical")
 
-# 回答风格约束（注入生成 Prompt）
-CLINICAL_STYLE = (
-    "使用专业术语；分点陈述；标明证据等级（guideline/meta/RCT/observational）；"
-    "不做个体化处方与剂量建议。"
-)
-
-# 检索时优先的证据等级顺序相关列表
-PREFER_LEVELS = ["guideline", "meta", "rct", "wiki", "observational"]
+# 保留这些公开常量，兼容已有 pipeline / 评测脚本；实际内容统一由 Prompt 配置管理。
+CLINICAL_PERSONA = _PROFILE.persona
+CLINICAL_STYLE = _PROFILE.style
+PREFER_LEVELS = list(_PROFILE.prefer_levels)
 
 
 def rewrite_clinical_query(question: str) -> str:
@@ -35,16 +27,7 @@ def rewrite_clinical_query(question: str) -> str:
         str: 改写后的检索查询；失败时回退为原问题。
     """
     llm = get_llm()
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "将用户问题改写为适合检索医学文献的英文或中英混合查询。"
-                "保留核心临床概念（疾病、干预、结局）。只输出改写后的查询，不要解释。"
-            ),
-        },
-        {"role": "user", "content": question},
-    ]
+    messages = build_query_messages("clinical", question)
     return llm.chat(messages, temperature=0, max_tokens=120).strip() or question
 
 

@@ -11,24 +11,14 @@ from __future__ import annotations
 import re
 
 from src.llm import get_llm
+from src.tracks.prompt_profiles import build_query_messages, get_track_profile
 
-# 面向普通消费者的系统人格
-NUTRITION_PERSONA = (
-    "你是面向普通消费者的「健康营养助手」。"
-    "把专业证据转成可理解的科普，语气友好、可执行，强调非诊疗。"
-    "绝不给具体药量、剂量或服药方案（如「每天吃X片」「每次X毫克」），"
-    "涉及用药的问题一律建议咨询医生/药师；只谈饮食与生活方式的一般建议。"
-)
+_PROFILE = get_track_profile("nutrition")
 
-# 科普回答结构约束
-NUTRITION_STYLE = (
-    "结构：通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医；"
-    "多用「研究提示」「可能有助于」等表述，说明边界与局限；"
-    "少用术语，必要时括号解释；引用仍用 [n]。"
-)
-
-# 营养赛道检索时加权的标签
-BOOST_TAGS = ["diet", "mediterranean", "hypertension", "hyperlipidemia", "diabetes"]
+# 兼容已有 pipeline / 评测脚本；实际内容统一由 Prompt 配置管理。
+NUTRITION_PERSONA = _PROFILE.persona
+NUTRITION_STYLE = _PROFILE.style
+BOOST_TAGS = list(_PROFILE.boost_tags)
 
 # 问药量/剂量时的通俗拒答（面向普通群众的口吻）
 NUTRITION_DOSAGE_REFUSAL = (
@@ -97,17 +87,7 @@ def rewrite_nutrition_query(question: str) -> str:
         str: 改写后查询；失败回退原问题。
     """
     llm = get_llm()
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "把消费者口语健康问题改写成可检索的证据查询"
-                "（可含饮食模式、营养干预、疾病风险关键词）。"
-                "只输出改写查询，不要解释。"
-            ),
-        },
-        {"role": "user", "content": question},
-    ]
+    messages = build_query_messages("nutrition", question)
     return llm.chat(messages, temperature=0, max_tokens=120).strip() or question
 
 

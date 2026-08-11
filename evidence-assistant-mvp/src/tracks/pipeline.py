@@ -34,6 +34,7 @@ from src.tracks.nutrition import (
     rewrite_nutrition_query,
     simplify_medical_terms,
 )
+from src.tracks.prompt_profiles import PROMPT_LAYERS, PROMPT_VERSION, get_track_profile
 
 logger = logging.getLogger(__name__)
 
@@ -167,6 +168,26 @@ def _live_augment(query: str, contexts: list[dict[str, Any]]) -> list[dict[str, 
     return contexts
 
 
+def _retrieval_summary(
+    contexts: list[dict[str, Any]],
+    *,
+    rewritten_query: str,
+    top_k: int,
+    use_live_tools: bool,
+) -> dict[str, Any]:
+    """生成供前端和报告使用的轻量检索摘要，不暴露完整内部候选。"""
+    sources = Counter(str(c.get("source") or "unknown") for c in contexts)
+    levels = Counter(str(c.get("evidence_level") or "other") for c in contexts)
+    return {
+        "rewritten_query": rewritten_query,
+        "requested_top_k": top_k,
+        "retrieved_count": len(contexts),
+        "sources": dict(sources),
+        "evidence_levels": dict(levels),
+        "live_tools": use_live_tools,
+        "prompt_layers": list(PROMPT_LAYERS),
+    }
+
 def ask(
     question: str,
     track: str = "clinical",
@@ -188,7 +209,11 @@ def ask(
     返回:
         AskResponse: 含回答、引用、证据面板、拒答标记、校验结果。
     """
+    if track not in {"clinical", "nutrition"}:
+        raise ValueError(f"unsupported track: {track}")
+
     retriever = retriever or HybridRetriever()
+    profile = get_track_profile(track)
 
     if track == "nutrition":
         # 产品边界：问具体药量/剂量的问题直接通俗拒答，不走检索生成
@@ -200,16 +225,22 @@ def ask(
                 refused=True,
                 rewritten_query=question,
                 track=track,
+                prompt_version=PROMPT_VERSION,
+                retrieval=_retrieval_summary(
+                    [],
+                    rewritten_query=question,
+                    top_k=top_k,
+                    use_live_tools=use_live_tools,
+                ),
                 citation_check={"ok": True, "has_citations": False, "reason": "dosage_request"},
             )
         rewritten = rewrite_nutrition_query(question)
-        persona, style = NUTRITION_PERSONA, NUTRITION_STYLE
-        prefer, boost = None, BOOST_TAGS
+        persona, style = profile.persona, profile.style
+        prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
     else:
-        track = "clinical"
         rewritten = rewrite_clinical_query(question)
-        persona, style = CLINICAL_PERSONA, CLINICAL_STYLE
-        prefer, boost = PREFER_LEVELS, None
+        persona, style = profile.persona, profile.style
+        prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
 
     contexts = retriever.retrieve(
         rewritten,
@@ -231,6 +262,13 @@ def ask(
             refused=True,
             rewritten_query=rewritten,
             track=track,
+            prompt_version=PROMPT_VERSION,
+            retrieval=_retrieval_summary(
+                contexts,
+                rewritten_query=rewritten,
+                top_k=top_k,
+                use_live_tools=use_live_tools,
+            ),
             citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
         )
 
@@ -239,6 +277,7 @@ def ask(
         contexts,
         system_persona=persona,
         answer_style=style,
+        track=track,
     )
     check = verify_citations(answer, contexts)
     if not refused:
@@ -272,6 +311,13 @@ def ask(
         refused=refused,
         rewritten_query=rewritten,
         track=track,
+        prompt_version=PROMPT_VERSION,
+        retrieval=_retrieval_summary(
+            contexts,
+            rewritten_query=rewritten,
+            top_k=top_k,
+            use_live_tools=use_live_tools,
+        ),
         citation_check=check,
     )
 
