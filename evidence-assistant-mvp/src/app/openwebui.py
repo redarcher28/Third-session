@@ -18,6 +18,7 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from src.models import AskResponse, Citation
 from src.tracks.pipeline import ask
 
 
@@ -124,6 +125,35 @@ def _resolve_track(model: str) -> str:
     )
 
 
+def _source_footer(citations: list[Citation]) -> str:
+    """把后端 RAG 的证据映射显示在 Open WebUI 的回答末尾。"""
+
+    if not citations:
+        return ""
+    lines = [
+        "\n\n---\n### 证据来源",
+        "回答中的 `[n]` 与本次后端检索采用的证据一一对应：",
+    ]
+    for citation in citations:
+        title = citation.title.strip() or citation.doc_id.strip() or "未命名来源"
+        metadata = [citation.evidence_level or "other", citation.source or "unknown"]
+        if citation.year:
+            metadata.append(str(citation.year))
+        lines.append(f"- [{citation.index}] {title}（{'，'.join(metadata)}）")
+        if citation.url.strip():
+            lines.append(f"  原文：{citation.url.strip()}")
+    return "\n".join(lines)
+
+
+def _render_rag_answer(result: AskResponse) -> str:
+    """渲染回答，并保留从回答到检索证据的可见追踪链。"""
+
+    answer = result.answer.strip() or "当前没有可展示的回答。"
+    if result.citations and "### 证据来源" not in answer:
+        answer += _source_footer(result.citations)
+    return answer
+
+
 def _completion_payload(
     *,
     response_id: str,
@@ -200,8 +230,10 @@ def chat_completions(request: OpenAIChatRequest) -> dict[str, Any] | StreamingRe
         raise HTTPException(status_code=400, detail="messages must include a user question")
 
     # Open WebUI 的模型选择决定赛道；证据数量和在线补检索仍由 B 组服务端统一控制。
+    # Open WebUI 自己的 RAG 在启动参数中关闭，避免同一问题被重复检索；这里的 ask()
+    # 仍会执行项目知识库的 query reformulation → HybridRetriever → grounded synthesis。
     result = ask(question, track=track, top_k=5, use_live_tools=False)
-    answer = result.answer.strip() or "当前没有可展示的回答。"
+    answer = _render_rag_answer(result)
     response_id = f"chatcmpl-{uuid.uuid4().hex}"
     created = int(time.time())
 
