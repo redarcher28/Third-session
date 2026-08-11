@@ -17,6 +17,7 @@ from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
 from src.kb.chunking import docs_to_chunks, merge_tiny_chunks, validate_chunk_traceability
+from src.models import EvidenceDoc
 from src.kb.store import EvidenceStore, export_store_stats, rebuild_collection_from_processed
 from src.kb.wiki import generate_wiki_pages
 
@@ -38,7 +39,13 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     epmc_docs = [] if skip_live else ingest_europepmc(page_size=10)
     if epmc_docs:
         save_docs(epmc_docs, settings.raw_path / "europepmc.json")
-    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs)
+    # 人工整理的文献清单（如 D1PM 配套文献，doc_id=pmid:XXXX，可回查）
+    lit_docs: list[EvidenceDoc] = []
+    lit_path = settings.raw_path / "literature.json"
+    if lit_path.exists():
+        lit_docs = load_docs(lit_path)
+        logger.info("Literature list -> %d docs", len(lit_docs))
+    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs)
     all_docs = dedupe_by_doi_or_title(all_docs)
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)
