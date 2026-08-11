@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from src.app.settings_api import ModelConnectionUpdate, update_settings
+from src.app.settings_api import ModelConnectionUpdate, _models_url, update_settings
 from src.runtime_config import (
     RuntimeLLMConfig,
     clear_runtime_config,
@@ -40,6 +40,16 @@ def _settings(**overrides: object) -> SimpleNamespace:
 
 
 class RuntimeSettingsTests(unittest.TestCase):
+    def test_deepseek_models_endpoint_uses_official_root_path(self) -> None:
+        self.assertEqual(
+            _models_url("https://api.deepseek.com"),
+            "https://api.deepseek.com/models",
+        )
+        self.assertEqual(
+            _models_url("https://api.deepseek.com/v1"),
+            "https://api.deepseek.com/v1/models",
+        )
+
     def test_runtime_file_is_private_and_round_trips_without_printing_key(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             path = Path(temp_dir) / "llm_runtime.json"

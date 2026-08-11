@@ -122,6 +122,22 @@ class LLMAdapterTests(unittest.TestCase):
         self.assertEqual(client.api_format, "openai")
         self.assertTrue(client.has_remote_embeddings)
 
+    def test_deepseek_openai_mode_uses_local_embedding_by_default(self) -> None:
+        with patch(
+            "src.llm.get_settings",
+            return_value=_settings(
+                llm_api_format="openai",
+                llm_api_key="deepseek-test-token",
+                llm_base_url="https://api.deepseek.com",
+                llm_model="deepseek-v4-flash",
+            ),
+        ):
+            client = LLMClient()
+
+        self.assertEqual(client.api_format, "openai")
+        self.assertFalse(client.has_remote_embeddings)
+        self.assertEqual(client.embedding_mode, "local")
+
     def test_placeholder_token_stays_offline(self) -> None:
         with patch(
             "src.llm.get_settings",

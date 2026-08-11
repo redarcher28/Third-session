@@ -89,6 +89,11 @@ def _validate_base_url(value: str) -> str:
 
 def _models_url(base_url: str) -> str:
     base = base_url.rstrip("/")
+    # DeepSeek 官方 OpenAI-compatible 根地址的模型列表是 /models；其余
+    # OpenAI-compatible 服务继续兼容项目原先的 /v1/models 约定。
+    parsed = urlsplit(base)
+    if parsed.netloc.lower() == "api.deepseek.com" and parsed.path in {"", "/"}:
+        return f"{base}/models"
     return f"{base}/models" if base.endswith("/v1") else f"{base}/v1/models"
 
 

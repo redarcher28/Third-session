@@ -60,6 +60,7 @@ class LLMClient:
             self.embedding_mode = (
                 "local"
                 if self.api_format in {"anthropic", "responses"}
+                or "deepseek" in self.base_url.lower()
                 else "openai"
             )
         if self.embedding_mode not in {"local", "openai"}:
