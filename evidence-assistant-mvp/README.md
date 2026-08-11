@@ -43,7 +43,7 @@ cp .env.example .env
 ```env
 LLM_API_FORMAT=anthropic
 LLM_API_KEY=你的 AgentRouter token
-LLM_BASE_URL=https://co.agentrouter.org
+LLM_BASE_URL=https://agentrouter.org
 LLM_MODEL=claude-opus-5
 EMBEDDING_MODE=local
 ```

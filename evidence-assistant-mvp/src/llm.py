@@ -9,7 +9,7 @@
 未配置有效 API Key 时进入离线占位模式，保证演示链路可跑通。
 
 AgentRouter 的 Claude 配置使用 Anthropic Messages：
-``LLM_API_FORMAT=anthropic``、``LLM_BASE_URL=https://co.agentrouter.org``。
+``LLM_API_FORMAT=anthropic``、``LLM_BASE_URL=https://agentrouter.org``。
 Claude 不提供本项目所需的 Embeddings，因此 Anthropic 模式默认使用本地
 哈希向量 + BM25，不需要第二个令牌。
 """
