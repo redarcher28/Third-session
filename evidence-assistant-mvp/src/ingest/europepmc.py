@@ -11,6 +11,7 @@ import logging
 
 import httpx
 
+from src.ingest import normalize_evidence_level
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -68,14 +69,7 @@ def search_europepmc(query: str, page_size: int = 15) -> list[EvidenceDoc]:
             else f"https://europepmc.org/article/{source}/{ext_id}"
         )
         doc_id = f"epmc:{source}:{ext_id}"
-        pub_type = (item.get("pubType") or "").lower()
-        level = "other"
-        if "review" in pub_type or "meta" in pub_type:
-            level = "meta"
-        elif "guideline" in pub_type:
-            level = "guideline"
-        elif "trial" in pub_type:
-            level = "rct"
+        level = normalize_evidence_level(item.get("pubType") or "", title)
         blob = f"{title} {abstract}"
         docs.append(
             EvidenceDoc(

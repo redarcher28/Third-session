@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from src.config import get_settings
+from src.ingest import normalize_evidence_level
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -60,19 +61,6 @@ def _text(el: ET.Element | None, path: str = "") -> str:
     if node is None:
         return ""
     return "".join(node.itertext()).strip()
-
-
-def _infer_level(title: str, pub_types: list[str]) -> str:
-    blob = " ".join(pub_types + [title]).lower()
-    if "guideline" in blob or "指南" in blob:
-        return "guideline"
-    if "meta-analysis" in blob or "systematic review" in blob:
-        return "meta"
-    if "randomized" in blob or "randomised" in blob or "clinical trial" in blob:
-        return "rct"
-    if "cohort" in blob or "observational" in blob:
-        return "observational"
-    return "other"
 
 
 def fetch_pubmed_docs(pmids: list[str]) -> list[EvidenceDoc]:
@@ -135,7 +123,7 @@ def fetch_pubmed_docs(pmids: list[str]) -> list[EvidenceDoc]:
                         year=year,
                         url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
                         tags=tags,
-                        evidence_level=_infer_level(title, pub_types),  # type: ignore[arg-type]
+                        evidence_level=normalize_evidence_level(" ".join(pub_types), title),
                         journal=journal,
                         doi=doi,
                         extra={"pub_types": pub_types},
