@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="OpenEvidence 风格的赛道一/二证据智能助手 MVP"
+    />
+    <title>证据台 · Evidence Desk</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="证据台首页">
+          <span class="brand-mark" aria-hidden="true">⌁</span>
+          <span>
+            <span class="brand-kicker">EVIDENCE DESK</span>
+            <span class="brand-name">证据台</span>
+          </span>
+        </a>
+        <div class="topbar-status">
+          <span class="status-dot" id="api-dot" aria-hidden="true"></span>
+          <span id="api-status">正在连接本地服务</span>
+          <span class="status-divider" aria-hidden="true"></span>
+          <span id="prompt-version">Prompt 栈加载中</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <p class="eyebrow">OPENEVIDENCE-STYLE / MVP</p>
+            <h1 id="hero-title">先看证据，<em>再形成答案。</em></h1>
+            <p class="hero-lede">
+              同一套检索、引用和拒答纪律，适配两种语言层：赛道一讲指南与 RCT，
+              赛道二讲研究提示与生活方式。
+            </p>
+          </div>
+          <div class="evidence-pulse" aria-label="当前系统链路">
+            <div class="pulse-orbit pulse-orbit-back"></div>
+            <div class="pulse-orbit pulse-orbit-front"></div>
+            <div class="pulse-core">[n]</div>
+            <div class="pulse-label pulse-label-top">检索</div>
+            <div class="pulse-label pulse-label-right">核验</div>
+            <div class="pulse-label pulse-label-bottom">引用</div>
+          </div>
+        </section>
+
+        <section class="workspace" aria-label="统一问答工作区">
+          <div class="workspace-main">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">01 / CHOOSE YOUR LENS</p>
+                <h2>选择回答视角</h2>
+              </div>
+              <p class="section-note">纪律相同，语言层不同</p>
+            </div>
+            <div class="track-grid" id="track-grid" role="radiogroup" aria-label="回答赛道"></div>
+
+            <div class="query-panel">
+              <div class="query-panel-head">
+                <div>
+                  <p class="eyebrow">02 / ASK A QUESTION</p>
+                  <h2 id="query-title">把你的问题交给证据库</h2>
+                </div>
+                <span class="query-counter" id="query-counter">0 / 800</span>
+              </div>
+              <label class="sr-only" for="question">输入问题</label>
+              <textarea
+                id="question"
+                maxlength="800"
+                rows="5"
+                placeholder="例如：地中海饮食对心血管风险有什么证据？"
+              ></textarea>
+              <div class="example-row">
+                <span class="example-label">可以先问</span>
+                <div id="examples" class="example-chips"></div>
+              </div>
+              <div class="query-actions">
+                <div class="control-cluster">
+                  <label class="select-control">
+                    <span>证据条数</span>
+                    <select id="top-k" aria-label="证据条数">
+                      <option value="3">3 条</option>
+                      <option value="5" selected>5 条</option>
+                      <option value="8">8 条</option>
+                    </select>
+                  </label>
+                  <label class="toggle-control">
+                    <input id="live-tools" type="checkbox" />
+                    <span class="toggle-track" aria-hidden="true"><span></span></span>
+                    <span>在线补检索</span>
+                  </label>
+                </div>
+                <button class="primary-button" id="ask-button" type="button">
+                  <span>生成带引用回答</span>
+                  <span class="button-arrow" aria-hidden="true">↗</span>
+                </button>
+              </div>
+              <p class="input-note" id="input-note">仅供学习与研究演示，不处理真实患者信息。</p>
+            </div>
+
+            <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+            <section id="answer-section" class="answer-section" hidden aria-labelledby="answer-title">
+              <div class="section-heading answer-heading">
+                <div>
+                  <p class="eyebrow">03 / GROUNDED ANSWER</p>
+                  <h2 id="answer-title">证据回答</h2>
+                </div>
+                <span id="citation-badge" class="badge"></span>
+              </div>
+              <div class="answer-meta" id="answer-meta"></div>
+              <article id="answer" class="answer-card"></article>
+              <div id="refusal-note" class="refusal-note" hidden></div>
+            </section>
+          </div>
+
+          <aside class="evidence-rail" aria-labelledby="evidence-title">
+            <div class="rail-heading">
+              <div>
+                <p class="eyebrow">SOURCE RAIL</p>
+                <h2 id="evidence-title">证据面板</h2>
+              </div>
+              <span id="evidence-count" class="rail-count">待检索</span>
+            </div>
+            <div class="rail-empty" id="rail-empty">
+              <div class="empty-symbol">◎</div>
+              <p>提交问题后，相关来源会在这里排列。</p>
+              <span>每张卡片都保留标题、来源、年份和可回查链接。</span>
+            </div>
+            <div id="evidence-list" class="evidence-list"></div>
+            <div id="retrieval-summary" class="retrieval-summary" hidden></div>
+          </aside>
+        </section>
+      </main>
+
+      <footer class="footer">
+        <span>证据智能助手 MVP · Track 01 / Track 02</span>
+        <span>引用请人工复核原文 · 不构成医疗建议</span>
+      </footer>
+    </div>
+    <script src="/assets/app.js" defer></script>
+  </body>
+</html>
+
