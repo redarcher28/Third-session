@@ -12,6 +12,7 @@ BACKEND_HOST="${EVIDENCE_BACKEND_HOST:-127.0.0.1}"
 BACKEND_PORT="${EVIDENCE_BACKEND_PORT:-8000}"
 OPENWEBUI_HOST="${OPENWEBUI_HOST:-127.0.0.1}"
 OPENWEBUI_PORT="${OPENWEBUI_PORT:-8080}"
+OPENWEBUI_NAME="${OPENWEBUI_NAME:-证据台}"
 
 if [[ ! -x "$BACKEND_ENV_PREFIX/bin/uvicorn" ]]; then
   echo "缺少后端 Conda 环境或 uvicorn：$BACKEND_ENV_PREFIX" >&2
@@ -59,6 +60,9 @@ for _ in {1..30}; do
 done
 
 echo "启动 OpenWebUI 主前端：http://$OPENWEBUI_HOST:$OPENWEBUI_PORT"
+export WEBUI_NAME="$OPENWEBUI_NAME"
+export DEFAULT_LOCALE="${DEFAULT_LOCALE:-zh-CN}"
+export ENABLE_EVALUATION_ARENA_MODELS="false"
 OPENAI_API_BASE_URL="http://$BACKEND_HOST:$BACKEND_PORT/v1" \
 OPENAI_API_BASE_URLS="http://$BACKEND_HOST:$BACKEND_PORT/v1" \
 OPENAI_API_KEY="evidence-local" \
@@ -71,6 +75,18 @@ BYPASS_EMBEDDING_AND_RETRIEVAL="true" \
 conda run --no-capture-output -p "$OPENWEBUI_ENV_PREFIX" \
   open-webui serve --host "$OPENWEBUI_HOST" --port "$OPENWEBUI_PORT" &
 OPENWEBUI_PID=$!
+
+# Open WebUI 首次启动会先完成数据库迁移；迁移完成后合并证据台的
+# banner、示例提问和 Arena 开关，不覆盖现有账号的其他配置。
+for _ in {1..30}; do
+  if curl -fsS "http://$OPENWEBUI_HOST:$OPENWEBUI_PORT/api/config" >/dev/null 2>&1; then
+    conda run --no-capture-output -p "$OPENWEBUI_ENV_PREFIX" \
+      python "$PROJECT_ROOT/scripts/configure_openwebui.py" --data-dir "$OPENWEBUI_DATA_DIR" \
+      || echo "提示：Open WebUI 证据台配置合并失败，可稍后手动重跑 configure_openwebui.py" >&2
+    break
+  fi
+  sleep 1
+done
 
 echo "主界面：http://$OPENWEBUI_HOST:$OPENWEBUI_PORT/"
 echo "备用界面：http://$BACKEND_HOST:$BACKEND_PORT/fallback"

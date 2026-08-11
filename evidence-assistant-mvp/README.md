@@ -100,6 +100,8 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
 bash scripts/start_openwebui.sh
 
 # 浏览器打开 http://127.0.0.1:8080/
+# 首次启动会自动合并证据台 Banner、两条赛道示例问题，并隐藏无关的 Arena Model；
+# 只合并带项目标记的配置，保留现有 Open WebUI 账号的其他设置。
 
 # FastAPI 自带证据台是无额外依赖的降级入口：http://127.0.0.1:8000/fallback
 # http://127.0.0.1:8000/ 会自动跳转到 Open WebUI 主前端
@@ -127,6 +129,10 @@ synthesis → citation validation`。差异由系统预置 Prompt 和赛道配�
 `BYPASS_EMBEDDING_AND_RETRIEVAL=true` 只关闭 Open WebUI 自己的重复 Embedding/RAG；它
 不会关闭本项目的 `HybridRetriever`。这样一次提问只经过一条可追踪的 RAG 链路，回答
 末尾的“证据来源”会把 `[n]` 映射回本次检索到的标题、证据等级、年份和原文链接。
+
+Open WebUI 的项目化信息通过 [`scripts/configure_openwebui.py`](scripts/configure_openwebui.py)
+合并：旧证据台的“双赛道纪律”、示例问题和“先看证据，再形成答案”会显示在主界面；
+它不会复制旧版页面，也不会覆盖 A 组知识库或用户的其他 Open WebUI 配置。
 
 ```mermaid
 flowchart LR
