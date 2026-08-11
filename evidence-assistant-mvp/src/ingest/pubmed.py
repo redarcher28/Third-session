@@ -178,15 +178,16 @@ def ingest_pubmed(
     """
     queries = queries or [build_mesh_aware_query(**p) for p in DEFAULT_PICO]
     all_ids: list[str] = []
-    try:
-        for q in queries:
+    for q in queries:
+        try:
             ids = search_pmids(q, retmax=retmax_per_query)
             logger.info("PubMed query=%r -> %d ids", q, len(ids))
             all_ids.extend(ids)
             time.sleep(0.34)
-    except Exception as e:
-        logger.warning("PubMed live fetch failed: %s — using empty list", e)
-        return []
+        except Exception as e:
+            # 单条检索失败不应丢掉整批已成功的 PMID，网络抖动时可继续保留权威文献来源。
+            logger.warning("PubMed query failed query=%r error=%s", q, e)
+            continue
     # unique preserve order
     seen: set[str] = set()
     uniq = []

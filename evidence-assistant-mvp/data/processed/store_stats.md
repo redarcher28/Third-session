@@ -1,44 +1,54 @@
-# 知识库统计
+# 向量库统计
 
-- Chroma 向量条数: 261
-- 导出 chunk 条数: 261
+- chunk 总数: 2063
+- 覆盖文档数: 1044
 
 ## 来源分布
 
-| source | count |
-|---|---:|
-| pubmed | 113 |
-| europepmc | 68 |
-| clinicaltrials | 65 |
-| wiki | 8 |
-| local | 7 |
+- clinicaltrials: 257
+- europepmc: 662
+- local: 7
+- pubmed: 1129
+- wiki: 8
 
 ## 证据等级分布
 
-| level | count |
-|---|---:|
-| other | 73 |
-| rct | 71 |
-| meta | 59 |
-| guideline | 31 |
-| observational | 19 |
-| wiki | 8 |
+- ebook: 1
+- guideline: 120
+- meta: 311
+- observational: 208
+- other: 812
+- rct: 603
+- wiki: 8
 
-## 标签分布
+## 年份分布
 
-| tag | count |
-|---|---:|
-| diet | 159 |
-| hypertension | 124 |
-| cardiovascular | 120 |
-| hyperlipidemia | 99 |
-| diabetes | 94 |
-| mediterranean | 51 |
-| guideline | 50 |
-| wiki | 8 |
-| local | 7 |
-| sodium | 4 |
-| rct | 4 |
-| meta | 3 |
-| dash | 3 |
-| statin | 1 |
+- -1: 14
+- 1988: 1
+- 1993: 2
+- 1998: 1
+- 2002: 2
+- 2003: 5
+- 2004: 4
+- 2005: 2
+- 2006: 5
+- 2007: 11
+- 2008: 14
+- 2009: 5
+- 2010: 8
+- 2011: 14
+- 2012: 9
+- 2013: 6
+- 2014: 16
+- 2015: 6
+- 2016: 13
+- 2017: 8
+- 2018: 18
+- 2019: 24
+- 2020: 17
+- 2021: 32
+- 2022: 37
+- 2023: 65
+- 2024: 120
+- 2025: 378
+- 2026: 1226

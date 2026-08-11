@@ -1,0 +1,64 @@
+{
+  "retrieved_at_utc": "2026-08-11T06:04:47.434163+00:00",
+  "scope": [
+    "hypertension",
+    "hyperlipidemia",
+    "statin",
+    "type 2 diabetes",
+    "cardiovascular prevention",
+    "Mediterranean diet",
+    "DASH diet",
+    "dietary sodium",
+    "lifestyle intervention"
+  ],
+  "authoritative_sources": [
+    {
+      "name": "PubMed E-utilities",
+      "endpoint": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+      "api_documentation": "https://www.ncbi.nlm.nih.gov/books/NBK25501/",
+      "query_count": 22,
+      "retmax_per_query": 35,
+      "documents": 535
+    },
+    {
+      "name": "Europe PMC REST API",
+      "endpoint": "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
+      "api_documentation": "https://europepmc.org/RestfulWebService",
+      "query_count": 14,
+      "page_size": 25,
+      "documents_after_oa_filter": 350
+    },
+    {
+      "name": "ClinicalTrials.gov Data API v2",
+      "endpoint": "https://clinicaltrials.gov/api/v2/studies",
+      "api_documentation": "https://clinicaltrials.gov/data-api/api",
+      "condition_count": 10,
+      "page_size": 20,
+      "documents": 199
+    }
+  ],
+  "counts": {
+    "local_documents": 7,
+    "deduplicated_evidence_documents": 1036,
+    "wiki_documents": 8,
+    "all_documents_with_wiki": 1044,
+    "chunks": 2063
+  },
+  "files": {
+    "raw": [
+      "data/raw/local_docs.json",
+      "data/raw/pubmed.json",
+      "data/raw/europepmc.json",
+      "data/raw/clinicaltrials.json"
+    ],
+    "processed": [
+      "data/processed/documents.json",
+      "data/processed/documents_with_wiki.json",
+      "data/processed/wiki_docs.json",
+      "data/processed/ingest_report.md",
+      "data/processed/store_stats.json",
+      "data/processed/store_stats.md",
+      "data/processed/expansion_manifest.json"
+    ]
+  }
+}

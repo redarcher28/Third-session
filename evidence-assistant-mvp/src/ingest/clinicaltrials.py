@@ -119,14 +119,15 @@ def ingest_clinicaltrials(
     """
     conditions = conditions or DEFAULT_CONDITIONS
     out: list[EvidenceDoc] = []
-    try:
-        for cond in conditions:
+    for cond in conditions:
+        try:
             docs = search_trials(cond, page_size=page_size)
             logger.info("ClinicalTrials condition=%r -> %d", cond, len(docs))
             out.extend(docs)
-    except Exception as e:
-        logger.warning("ClinicalTrials fetch failed: %s", e)
-        return []
+        except Exception as e:
+            # 单个条件网络失败时保留其他条件已成功采集的试验记录。
+            logger.warning("ClinicalTrials condition failed condition=%r error=%s", cond, e)
+            continue
     return out
 
 
