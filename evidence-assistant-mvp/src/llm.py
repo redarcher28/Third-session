@@ -108,7 +108,9 @@ class LLMClient:
         system = next((m["content"] for m in messages if m["role"] == "system"), "")
         if "rewrite" in system.lower() or "改写" in system:
             return user.strip().split("\n")[0][:200]
-        if "rerank" in system.lower() or "相关性" in system:
+        # 不要用“相关性”作重排识别词：赛道二的正常科普 Prompt 也会讨论
+        # 相关性，离线模式应继续返回证据回答，而不是把候选编号泄露到界面。
+        if "rerank" in system.lower() or "只输出逗号分隔的候选编号" in system:
             return "1,2,3,4,5"
         if "wiki" in system.lower() or "主题知识页" in system:
             return (
