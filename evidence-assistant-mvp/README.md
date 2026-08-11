@@ -91,30 +91,18 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 ### 3. 启动统一 Web 界面 / API
 
 ```bash
-# 终端 A：项目后端（Open WebUI 的 OpenAI-compatible provider）
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
-  uvicorn src.app.api:app --host 127.0.0.1 --port 8000
-
-# 终端 B：首次准备 Open WebUI（只需执行一次）
+# 首次准备 Open WebUI（只需执行一次）
 conda create -y -p /Users/quentincrane/conda_envs/open_webui python=3.11 pip
 conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
   python -m pip install open-webui
 
-# 终端 B：启动 Open WebUI 主前端
-# 首次启动/曾启动过默认 embedding 时保留 RESET_CONFIG_ON_START；初始化完成后可去掉
-OPENAI_API_BASE_URL=http://127.0.0.1:8000/v1 \
-OPENAI_API_KEY=evidence-local \
-DATA_DIR=/Users/quentincrane/conda_envs/open_webui_data \
-RESET_CONFIG_ON_START=true \
-RAG_EMBEDDING_ENGINE=openai \
-RAG_EMBEDDING_MODEL=evidence-embedding \
-BYPASS_EMBEDDING_AND_RETRIEVAL=true \
-conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
-  open-webui serve --host 127.0.0.1 --port 8080
+# 启动后端 + 真正的 Open WebUI 主前端
+bash scripts/start_openwebui.sh
 
 # 浏览器打开 http://127.0.0.1:8080/
 
-# FastAPI 自带证据台是无额外依赖的降级入口：http://127.0.0.1:8000/
+# FastAPI 自带证据台是无额外依赖的降级入口：http://127.0.0.1:8000/fallback
+# http://127.0.0.1:8000/ 会自动跳转到 Open WebUI 主前端
 
 # Streamlit 备用课堂界面（统一赛道一/二选择器 + 赛道三评测）
 conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \

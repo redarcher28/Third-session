@@ -17,7 +17,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +25,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models import AskRequest, AskResponse
+from src.config import get_settings
 from src.app.openwebui import (
     OpenAIChatRequest,
     chat_completions,
@@ -63,8 +64,14 @@ def health() -> dict:
 
 
 @app.get("/", include_in_schema=False)
-def web_app() -> FileResponse:
-    """提供赛道一/二共用的轻量 Web 前端。"""
+def web_app() -> RedirectResponse:
+    """把根入口交给真正的 Open WebUI 主前端。"""
+    return RedirectResponse(url=get_settings().openwebui_url, status_code=307)
+
+
+@app.get("/fallback", include_in_schema=False)
+def fallback_web_app() -> FileResponse:
+    """提供无额外依赖的旧版备用页，不作为主前端。"""
     return FileResponse(STATIC_DIR / "index.html")
 
 

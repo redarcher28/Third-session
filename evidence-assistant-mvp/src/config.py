@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_reasoning_effort: str = ""
 
+    # 主前端由独立的 Open WebUI 进程提供；FastAPI 只保留 /fallback 备用页。
+    openwebui_url: str = "http://127.0.0.1:8080/"
+
     # Responses/Anthropic 模式不依赖 OpenAI-compatible Embeddings。auto 会在
     # 这两种模式下自动使用本地哈希向量，并由 BM25 保证关键词召回；OpenAI
     # Chat Completions 模式仍默认使用远程 Embeddings，保持旧配置兼容。
