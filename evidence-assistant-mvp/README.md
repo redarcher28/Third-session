@@ -28,6 +28,7 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 cd /Users/quentincrane/Documents/第三期/Third-session/evidence-assistant-mvp
 
 # macOS：项目后端使用独立 Conda 环境
+conda create -y -p /Users/quentincrane/conda_envs/evidence_mvp python=3.12 pip
 conda run -p /Users/quentincrane/conda_envs/evidence_mvp \
   python -m pip install -r requirements.txt
 cp .env.example .env
