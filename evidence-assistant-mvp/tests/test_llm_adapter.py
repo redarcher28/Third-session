@@ -18,6 +18,7 @@ def _settings(**overrides: object) -> SimpleNamespace:
         "llm_api_key": "agentrouter-test-token",
         "llm_base_url": "https://co.agentrouter.org",
         "llm_model": "claude-opus-5",
+        "llm_reasoning_effort": "",
         "embedding_mode": "auto",
         "embedding_model": "text-embedding-3-small",
         "embedding_api_key": "",
@@ -64,6 +65,48 @@ class LLMAdapterTests(unittest.TestCase):
             [{"role": "user", "content": "高血压与限盐？"}],
         )
         self.assertEqual(kwargs["headers"]["x-api-key"], "agentrouter-test-token")
+
+    def test_responses_request_uses_byeapi_root_and_reasoning_effort(self) -> None:
+        response = httpx.Response(
+            200,
+            json={"output_text": "OK"},
+            request=httpx.Request("POST", "https://api.byeapi.top/v1/responses"),
+        )
+        with (
+            patch(
+                "src.llm.get_settings",
+                return_value=_settings(
+                    llm_api_format="responses",
+                    llm_api_key="byeapi-test-token",
+                    llm_base_url="https://api.byeapi.top",
+                    llm_model="gpt-5.5",
+                    llm_reasoning_effort="xhigh",
+                ),
+            ),
+            patch("src.llm.httpx.post", return_value=response) as post,
+        ):
+            client = LLMClient()
+            answer = client.chat(
+                [
+                    {"role": "system", "content": "只回答证据问题"},
+                    {"role": "user", "content": "限盐与血压？"},
+                ],
+                max_tokens=80,
+            )
+            vectors = client.embed(["限盐"])
+
+        self.assertEqual(answer, "OK")
+        self.assertEqual(client.api_format, "responses")
+        self.assertFalse(client.has_remote_embeddings)
+        self.assertEqual(len(vectors[0]), 384)
+        post.assert_called_once()
+        url = post.call_args.args[0]
+        kwargs = post.call_args.kwargs
+        self.assertEqual(url, "https://api.byeapi.top/v1/responses")
+        self.assertEqual(kwargs["json"]["model"], "gpt-5.5")
+        self.assertEqual(kwargs["json"]["max_output_tokens"], 80)
+        self.assertEqual(kwargs["json"]["reasoning"], {"effort": "xhigh"})
+        self.assertEqual(kwargs["headers"]["Authorization"], "Bearer byeapi-test-token")
 
     def test_openai_mode_keeps_remote_embedding_default(self) -> None:
         with patch(

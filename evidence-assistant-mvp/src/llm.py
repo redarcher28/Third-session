@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-大模型客户端封装（OpenAI Chat Completions + Anthropic Messages）。
+大模型客户端封装（OpenAI Chat Completions + Responses + Anthropic Messages）。
 
 统一提供：
 - chat：文本生成（改写 / 重排 / 回答 / Wiki）
@@ -8,10 +8,9 @@
 
 未配置有效 API Key 时进入离线占位模式，保证演示链路可跑通。
 
-AgentRouter 的 Claude 配置使用 Anthropic Messages：
-``LLM_API_FORMAT=anthropic``、``LLM_BASE_URL=https://agentrouter.org``。
-Claude 不提供本项目所需的 Embeddings，因此 Anthropic 模式默认使用本地
-哈希向量 + BM25，不需要第二个令牌。
+ByeAPI 的 GPT 配置使用 OpenAI Responses：
+``LLM_API_FORMAT=responses``、``LLM_BASE_URL=https://api.byeapi.top``。
+Responses/Anthropic 模式默认使用本地哈希向量 + BM25，不需要第二个令牌。
 """
 
 from __future__ import annotations
@@ -34,20 +33,21 @@ class LLMClient:
         """根据 Settings 初始化远端客户端，并判断是否离线模式。"""
         settings = get_settings()
         self.api_format = settings.llm_api_format.strip().lower()
-        if self.api_format not in {"openai", "anthropic"}:
+        if self.api_format not in {"openai", "anthropic", "responses"}:
             raise ValueError(
-                "LLM_API_FORMAT 只能是 openai 或 anthropic；"
+                "LLM_API_FORMAT 只能是 openai、responses 或 anthropic；"
                 f"当前值：{settings.llm_api_format!r}"
             )
 
         self._api_key = settings.llm_api_key.strip()
         self.base_url = settings.llm_base_url.strip()
         self.model = settings.llm_model
+        self.reasoning_effort = settings.llm_reasoning_effort.strip()
         self.embedding_model = settings.embedding_model
         self._offline = _is_placeholder_key(self._api_key)
 
-        # 只有 OpenAI 协议需要初始化 OpenAI SDK；Anthropic 模式走下面的
-        # Messages HTTP 请求，避免把 Anthropic base URL 误交给 OpenAI SDK。
+        # Chat Completions 继续使用 OpenAI SDK；Responses/Anthropic 走下面
+        # 的显式 HTTP 请求，保证 root base URL 能正确拼出 /v1/responses。
         self._client: OpenAI | None = None
         if self.api_format == "openai":
             self._client = OpenAI(
@@ -57,7 +57,11 @@ class LLMClient:
 
         self.embedding_mode = settings.embedding_mode.strip().lower()
         if self.embedding_mode == "auto":
-            self.embedding_mode = "local" if self.api_format == "anthropic" else "openai"
+            self.embedding_mode = (
+                "local"
+                if self.api_format in {"anthropic", "responses"}
+                else "openai"
+            )
         if self.embedding_mode not in {"local", "openai"}:
             raise ValueError(
                 "EMBEDDING_MODE 只能是 auto、local 或 openai；"
@@ -66,8 +70,8 @@ class LLMClient:
 
         self._embedding_client: OpenAI | None = None
         if not self._offline and self.embedding_mode == "openai":
-            # 只有显式提供独立 Embedding 配置时，Anthropic 模式才会把
-            # Embedding 请求发往另一个 OpenAI-compatible 服务。
+            # 只有显式提供独立 Embedding 配置时，非 Chat Completions
+            # 模式才会把 Embedding 请求发往另一个 OpenAI-compatible 服务。
             embedding_key = settings.embedding_api_key.strip()
             if not embedding_key and self.api_format == "openai":
                 embedding_key = self._api_key
@@ -126,6 +130,8 @@ class LLMClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
+        if self.api_format == "responses":
+            return self._chat_responses(messages, max_tokens=max_tokens)
         if self._client is None:  # pragma: no cover - 防御性保护
             raise RuntimeError("OpenAI client is not initialized")
         resp = self._client.chat.completions.create(
@@ -159,6 +165,63 @@ class LLMClient:
         )
         data = sorted(resp.data, key=lambda x: x.index)
         return [list(d.embedding) for d in data]
+
+    def _chat_responses(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int,
+    ) -> str:
+        """调用 OpenAI Responses-compatible 接口，并提取 output_text。"""
+        payload: dict[str, object] = {
+            "model": self.model,
+            "input": messages,
+            "max_output_tokens": max_tokens,
+        }
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+
+        response = httpx.post(
+            self._responses_url(),
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "content-type": "application/json",
+            },
+            json=payload,
+            timeout=120.0,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = response.text[:500].replace("\n", " ")
+            raise RuntimeError(
+                f"Responses API 请求失败（HTTP {response.status_code}）：{detail}"
+            ) from exc
+
+        data = response.json()
+        answer = str(data.get("output_text") or "").strip()
+        if not answer:
+            blocks: list[str] = []
+            for item in data.get("output", []):
+                if not isinstance(item, dict):
+                    continue
+                for block in item.get("content", []):
+                    if isinstance(block, dict) and block.get("type") in {
+                        "output_text",
+                        "text",
+                    }:
+                        blocks.append(str(block.get("text") or ""))
+            answer = "".join(blocks).strip()
+        if not answer:
+            raise RuntimeError("Responses API 返回中没有可读文本")
+        return answer
+
+    def _responses_url(self) -> str:
+        """根据 provider root/base URL 生成 Responses endpoint。"""
+        base = self.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            return f"{base}/responses"
+        return f"{base}/v1/responses"
 
     def _chat_anthropic(
         self,

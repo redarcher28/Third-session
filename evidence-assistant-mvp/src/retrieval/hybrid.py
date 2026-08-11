@@ -99,7 +99,7 @@ class HybridRetriever:
         if self.store.count() == 0:
             return []
 
-        # 没有远程 Embedding 时（离线哈希向量，或 Anthropic/AgentRouter
+        # 没有远程 Embedding 时（离线哈希向量，或 Responses/Anthropic
         # 单令牌配置）跳过 Chroma 向量分支，避免把无语义的伪向量当成召回依据；
         # 中文 bigram BM25 仍然负责关键词召回，RAG 链路不会断。
         llm = get_llm()
