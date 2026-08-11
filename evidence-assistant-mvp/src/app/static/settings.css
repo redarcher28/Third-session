@@ -136,6 +136,20 @@ code {
 
 .field small { color: #70839a; font-size: 12px; line-height: 1.5; }
 
+.fixed-policy {
+  margin-top: 24px;
+  padding: 15px 17px;
+  border: 1px solid #d7e6ef;
+  border-radius: 13px;
+  background: #f1f8fb;
+  color: #587083;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.fixed-policy strong { color: #17658b; }
+.fixed-policy p { margin: 5px 0 0; }
+
 .checkbox-field {
   display: flex;
   align-items: center;

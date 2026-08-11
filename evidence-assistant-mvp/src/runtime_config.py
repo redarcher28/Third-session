@@ -29,6 +29,7 @@ class RuntimeLLMConfig(BaseModel):
     api_key: str = ""
     base_url: str
     model: str
+    # 旧运行时文件仍可读取该字段，但新设置页不再写入或展示它。
     reasoning_effort: str = ""
 
     def as_settings_overrides(self) -> dict[str, str]:

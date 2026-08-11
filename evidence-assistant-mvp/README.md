@@ -58,7 +58,8 @@ LLM_API_FORMAT=responses
 LLM_API_KEY=你的 ByeAPI token
 LLM_BASE_URL=https://api.byeapi.top
 LLM_MODEL=gpt-5.6-luna
-LLM_REASONING_EFFORT=xhigh
+# 关闭额外推理强度调节，避免增加等待时间；赛道策略由后端统一控制
+LLM_REASONING_EFFORT=
 RAG_USE_LLM_RERANK=false
 RAG_USE_LLM_QUERY_REWRITE=false
 EMBEDDING_MODE=local
@@ -79,6 +80,10 @@ ByeAPI Responses 不保证提供本项目所需的 Embeddings，因此 `EMBEDDIN
 远程 query reformulation Prompt，把 `RAG_USE_LLM_QUERY_REWRITE` 改为 `true`；如需
 启用二次候选重排，把 `RAG_USE_LLM_RERANK` 改为 `true`。回答响应中的 `timings_ms`
 和证据面板耗时行可用于定位改写、检索、生成、引用校验分别花了多久。
+
+设置页只保留 API 格式、Base URL、模型名和 API Key；`reasoning_effort`、temperature、
+top_p、max tokens 等模型细调不在产品界面开放。Open WebUI 为协议兼容仍可能提交这些
+字段，但本项目的赛道 Prompt、检索 `top_k`、引用规则和生成策略由后端固定。
 
 如果电脑上使用的是 Conda prefix 环境而不是环境名，可这样启动，脚本仍兼容：
 

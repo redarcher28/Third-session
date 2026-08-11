@@ -34,12 +34,15 @@ LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
 
 
 class ModelConnectionUpdate(BaseModel):
-    """设置页提交的模型连接配置。api_key 为空时保留当前令牌。"""
+    """设置页提交的最小模型连接配置；api_key 为空时保留当前令牌。
+
+    旧客户端即使继续提交 ``reasoning_effort`` 也会被 Pydantic 忽略；设置页
+    不再暴露该调节项，保存连接时使用项目统一的默认策略。
+    """
 
     api_format: Literal["openai", "anthropic", "responses"] | None = None
     base_url: str | None = Field(default=None, max_length=500)
     model: str | None = Field(default=None, max_length=200)
-    reasoning_effort: str | None = Field(default=None, max_length=40)
     api_key: str | None = Field(default=None, max_length=1000)
     clear_api_key: bool = False
 
@@ -108,7 +111,6 @@ def _settings_status() -> dict[str, Any]:
         "api_format": settings.llm_api_format,
         "base_url": settings.llm_base_url,
         "model": settings.llm_model,
-        "reasoning_effort": settings.llm_reasoning_effort,
         "api_key_configured": not _is_placeholder_key(key),
         "api_key_hint": _mask_key(key),
         "source": source,
@@ -142,12 +144,6 @@ def update_settings(request: Request, payload: ModelConnectionUpdate) -> dict[st
     model = (payload.model or current.llm_model).strip()
     if not model:
         raise HTTPException(status_code=422, detail="模型名不能为空")
-    reasoning_effort = (
-        payload.reasoning_effort
-        if payload.reasoning_effort is not None
-        else current.llm_reasoning_effort
-    ).strip()
-
     if payload.clear_api_key:
         api_key = ""
     elif payload.api_key is not None and payload.api_key.strip():
@@ -163,7 +159,8 @@ def update_settings(request: Request, payload: ModelConnectionUpdate) -> dict[st
             api_key=api_key,
             base_url=base_url,
             model=model,
-            reasoning_effort=reasoning_effort,
+            # 连接页不再允许逐请求调节推理强度；保存后使用统一默认值。
+            reasoning_effort="",
         )
     )
     clear_settings_cache()

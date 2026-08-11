@@ -65,18 +65,6 @@
             />
           </label>
 
-          <label class="field">
-            <span>Reasoning effort</span>
-            <input
-              id="reasoning-effort"
-              name="reasoning_effort"
-              type="text"
-              maxlength="40"
-              autocomplete="off"
-              placeholder="xhigh（可留空）"
-            />
-          </label>
-
           <label class="field field-wide">
             <span>API Key / Token</span>
             <input
@@ -89,6 +77,15 @@
             />
             <small id="key-hint">令牌不会回显到页面或提交到 Git。</small>
           </label>
+        </div>
+
+        <div class="fixed-policy" role="note">
+          <strong>赛道策略已固定</strong>
+          <p>
+            赛道 Prompt、检索数量、引用规则和回答采样策略由后端统一控制；这里不开放
+            reasoning effort、temperature、top_p、max tokens 等细调，保证赛道一/二的
+            演示口径和评测结果一致。
+          </p>
         </div>
 
         <label class="checkbox-field">

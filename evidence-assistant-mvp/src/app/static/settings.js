@@ -6,7 +6,6 @@
     apiFormat: document.querySelector("#api-format"),
     baseUrl: document.querySelector("#base-url"),
     model: document.querySelector("#model"),
-    reasoningEffort: document.querySelector("#reasoning-effort"),
     apiKey: document.querySelector("#api-key"),
     clearApiKey: document.querySelector("#clear-api-key"),
     testButton: document.querySelector("#test-button"),
@@ -39,7 +38,6 @@
     els.apiFormat.value = status.api_format || "responses";
     els.baseUrl.value = status.base_url || "";
     els.model.value = status.model || "";
-    els.reasoningEffort.value = status.reasoning_effort || "";
     els.statusSummary.textContent = status.api_key_configured
       ? `${status.model} · ${status.api_key_hint}`
       : `${status.model} · 未配置令牌`;
@@ -73,7 +71,6 @@
           api_format: els.apiFormat.value,
           base_url: els.baseUrl.value.trim(),
           model: els.model.value.trim(),
-          reasoning_effort: els.reasoningEffort.value.trim(),
           api_key: els.apiKey.value || null,
           clear_api_key: els.clearApiKey.checked,
         }),

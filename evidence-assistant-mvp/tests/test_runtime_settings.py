@@ -93,6 +93,8 @@ class RuntimeSettingsTests(unittest.TestCase):
             self.assertTrue(result["status"]["api_key_configured"])
             self.assertEqual(result["status"]["api_key_hint"], "••••••••1234")
             self.assertNotIn("api_key", result["status"])
+            self.assertNotIn("reasoning_effort", result["status"])
+            self.assertEqual(loaded.reasoning_effort, "")  # type: ignore[union-attr]
             reset.assert_called_once_with()
 
     def test_remote_request_is_rejected(self) -> None:
