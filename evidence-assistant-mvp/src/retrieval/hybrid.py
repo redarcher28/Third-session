@@ -99,9 +99,13 @@ class HybridRetriever:
         if self.store.count() == 0:
             return []
 
-        # 离线模式：embedding 为哈希占位（无语义相似度），向量分支是纯噪声，
-        # 跳过它让 BM25 关键词召回独挑大梁，保证演示检索质量。
-        vector_hits = [] if get_llm().is_offline else self.store.query(query, n_results=candidate_k)
+        # 没有远程 Embedding 时（离线哈希向量，或 Anthropic/AgentRouter
+        # 单令牌配置）跳过 Chroma 向量分支，避免把无语义的伪向量当成召回依据；
+        # 中文 bigram BM25 仍然负责关键词召回，RAG 链路不会断。
+        llm = get_llm()
+        # getattr 保留对旧版/测试替身 LLM（只有 is_offline 属性）的兼容。
+        can_use_vectors = getattr(llm, "has_remote_embeddings", not llm.is_offline)
+        vector_hits = [] if not can_use_vectors else self.store.query(query, n_results=candidate_k)
         bm25_hits = self._bm25_search(query, top_n=candidate_k)
 
         merged: dict[str, dict[str, Any]] = {}

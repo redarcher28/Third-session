@@ -25,11 +25,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- 大模型（OpenAI 兼容接口）---
+    # --- 大模型 ---
+    # ``anthropic`` 对应 Anthropic Messages（Claude）；``openai`` 对应
+    # OpenAI Chat Completions。两者都由 src/llm.py 统一封装。
+    llm_api_format: Literal["openai", "anthropic"] = "openai"
     llm_api_key: str = "sk-your-key-here"
     llm_base_url: str = "https://api.openai.com/v1"
     llm_model: str = "gpt-4o-mini"
+
+    # Claude/Anthropic 没有 OpenAI-compatible Embeddings。auto 会在
+    # Anthropic 模式下自动使用本地哈希向量，并由 BM25 保证关键词召回；
+    # OpenAI 模式仍默认使用远程 Embeddings，保持旧配置兼容。
+    embedding_mode: Literal["auto", "local", "openai"] = "auto"
     embedding_model: str = "text-embedding-3-small"
+    embedding_api_key: str = ""
+    embedding_base_url: str = ""
 
     # --- NCBI / PubMed 礼貌访问参数 ---
     ncbi_api_key: str = ""

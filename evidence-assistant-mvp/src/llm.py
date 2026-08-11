@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
 """
-大模型客户端封装（OpenAI 兼容协议）。
+大模型客户端封装（OpenAI Chat Completions + Anthropic Messages）。
 
 统一提供：
 - chat：文本生成（改写 / 重排 / 回答 / Wiki）
 - embed：向量化（检索入库与查询）
 
 未配置有效 API Key 时进入离线占位模式，保证演示链路可跑通。
+
+AgentRouter 的 Claude 配置使用 Anthropic Messages：
+``LLM_API_FORMAT=anthropic``、``LLM_BASE_URL=https://co.agentrouter.org``。
+Claude 不提供本项目所需的 Embeddings，因此 Anthropic 模式默认使用本地
+哈希向量 + BM25，不需要第二个令牌。
 """
 
 from __future__ import annotations
 
 import logging
 
+import httpx
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -27,21 +33,71 @@ class LLMClient:
     def __init__(self) -> None:
         """根据 Settings 初始化远端客户端，并判断是否离线模式。"""
         settings = get_settings()
+        self.api_format = settings.llm_api_format.strip().lower()
+        if self.api_format not in {"openai", "anthropic"}:
+            raise ValueError(
+                "LLM_API_FORMAT 只能是 openai 或 anthropic；"
+                f"当前值：{settings.llm_api_format!r}"
+            )
+
+        self._api_key = settings.llm_api_key.strip()
+        self.base_url = settings.llm_base_url.strip()
         self.model = settings.llm_model
         self.embedding_model = settings.embedding_model
-        self._client = OpenAI(
-            api_key=settings.llm_api_key,
-            base_url=settings.llm_base_url,
-        )
-        self._offline = (
-            not settings.llm_api_key
-            or settings.llm_api_key.startswith("sk-your-key")
-        )
+        self._offline = _is_placeholder_key(self._api_key)
+
+        # 只有 OpenAI 协议需要初始化 OpenAI SDK；Anthropic 模式走下面的
+        # Messages HTTP 请求，避免把 Anthropic base URL 误交给 OpenAI SDK。
+        self._client: OpenAI | None = None
+        if self.api_format == "openai":
+            self._client = OpenAI(
+                api_key=self._api_key,
+                base_url=self.base_url,
+            )
+
+        self.embedding_mode = settings.embedding_mode.strip().lower()
+        if self.embedding_mode == "auto":
+            self.embedding_mode = "local" if self.api_format == "anthropic" else "openai"
+        if self.embedding_mode not in {"local", "openai"}:
+            raise ValueError(
+                "EMBEDDING_MODE 只能是 auto、local 或 openai；"
+                f"当前值：{settings.embedding_mode!r}"
+            )
+
+        self._embedding_client: OpenAI | None = None
+        if not self._offline and self.embedding_mode == "openai":
+            # 只有显式提供独立 Embedding 配置时，Anthropic 模式才会把
+            # Embedding 请求发往另一个 OpenAI-compatible 服务。
+            embedding_key = settings.embedding_api_key.strip()
+            if not embedding_key and self.api_format == "openai":
+                embedding_key = self._api_key
+            if _is_placeholder_key(embedding_key):
+                logger.warning("Embedding key is not configured; falling back to local vectors")
+                self.embedding_mode = "local"
+            else:
+                embedding_base_url = settings.embedding_base_url.strip()
+                if not embedding_base_url:
+                    embedding_base_url = (
+                        self.base_url
+                        if self.api_format == "openai"
+                        else "https://api.openai.com/v1"
+                    )
+                self._embedding_client = OpenAI(
+                    api_key=embedding_key,
+                    base_url=embedding_base_url,
+                )
+
+        self._has_remote_embeddings = self._embedding_client is not None
 
     @property
     def is_offline(self) -> bool:
         """是否处于离线占位模式。"""
         return self._offline
+
+    @property
+    def has_remote_embeddings(self) -> bool:
+        """是否可以安全使用 Chroma 的远程向量召回。"""
+        return self._has_remote_embeddings
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
     def chat(
@@ -64,6 +120,14 @@ class LLMClient:
         """
         if self._offline:
             return self._offline_chat(messages)
+        if self.api_format == "anthropic":
+            return self._chat_anthropic(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        if self._client is None:  # pragma: no cover - 防御性保护
+            raise RuntimeError("OpenAI client is not initialized")
         resp = self._client.chat.completions.create(
             model=self.model,
             messages=messages,  # type: ignore[arg-type]
@@ -85,14 +149,88 @@ class LLMClient:
         """
         if not texts:
             return []
-        if self._offline:
+        if self._offline or self.embedding_mode == "local":
             return [self._hash_embed(t) for t in texts]
-        resp = self._client.embeddings.create(
+        if self._embedding_client is None:  # pragma: no cover - 防御性保护
+            raise RuntimeError("Embedding client is not initialized")
+        resp = self._embedding_client.embeddings.create(
             model=self.embedding_model,
             input=texts,
         )
         data = sorted(resp.data, key=lambda x: x.index)
         return [list(d.embedding) for d in data]
+
+    def _chat_anthropic(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> str:
+        """调用 Anthropic Messages 接口，并把响应转换成纯文本。"""
+        system_parts = [
+            message["content"]
+            for message in messages
+            if message.get("role") == "system" and message.get("content")
+        ]
+        conversation = [
+            {
+                "role": message.get("role", "user"),
+                "content": message.get("content", ""),
+            }
+            for message in messages
+            if message.get("role") in {"user", "assistant"}
+        ]
+        if not conversation:
+            conversation = [{"role": "user", "content": ""}]
+
+        payload: dict[str, object] = {
+            "model": self.model,
+            "messages": conversation,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+
+        response = httpx.post(
+            self._anthropic_messages_url(),
+            headers={
+                # x-api-key 是 Anthropic Messages 的标准认证头；额外提供
+                # Bearer 兼容头，覆盖 AgentRouter/网关常见的 AUTH_TOKEN 形式。
+                "x-api-key": self._api_key,
+                "Authorization": f"Bearer {self._api_key}",
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+            },
+            json=payload,
+            timeout=120.0,
+        )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            detail = response.text[:500].replace("\n", " ")
+            raise RuntimeError(
+                f"Anthropic API 请求失败（HTTP {response.status_code}）：{detail}"
+            ) from exc
+
+        data = response.json()
+        text_blocks = [
+            block.get("text", "")
+            for block in data.get("content", [])
+            if isinstance(block, dict) and block.get("type") == "text"
+        ]
+        answer = "".join(str(block) for block in text_blocks).strip()
+        if not answer:
+            raise RuntimeError("Anthropic API 返回中没有可读文本")
+        return answer
+
+    def _anthropic_messages_url(self) -> str:
+        """根据可编辑的 base URL 生成 Messages endpoint。"""
+        base = self.base_url.rstrip("/")
+        if base.endswith("/v1"):
+            return f"{base}/messages"
+        return f"{base}/v1/messages"
 
     def _offline_chat(self, messages: list[dict[str, str]]) -> str:
         """
@@ -155,6 +293,18 @@ class LLMClient:
             vec[(h // dim) % dim] += 0.5
         norm = math.sqrt(sum(v * v for v in vec)) or 1.0
         return [v / norm for v in vec]
+
+
+def _is_placeholder_key(value: str) -> bool:
+    """识别示例令牌，避免把占位字符串当成真实密钥发到远端。"""
+    normalized = value.strip().lower()
+    return (
+        not normalized
+        or normalized.startswith("sk-your-key")
+        or normalized.startswith("fill-your-")
+        or normalized.startswith("replace-with-")
+        or normalized in {"your-api-key", "your-agentrouter-token", "changeme"}
+    )
 
 
 _client: LLMClient | None = None
