@@ -69,8 +69,7 @@ def search_europepmc(query: str, page_size: int = 15) -> list[EvidenceDoc]:
             else f"https://europepmc.org/article/{source}/{ext_id}"
         )
         doc_id = f"epmc:{source}:{ext_id}"
-        pub_type = item.get("pubType") or ""
-        level = normalize_evidence_level(pub_type, title)
+        level = normalize_evidence_level(item.get("pubType") or "", title)
         blob = f"{title} {abstract}"
         docs.append(
             EvidenceDoc(
@@ -81,15 +80,13 @@ def search_europepmc(query: str, page_size: int = 15) -> list[EvidenceDoc]:
                 year=year_i,
                 url=url,
                 tags=_tags(blob),
-                evidence_level=level,
+                evidence_level=level,  # type: ignore[arg-type]
                 journal=item.get("journalTitle") or "",
                 doi=item.get("doi") or "",
                 extra={
-                    "is_open_access": str(item.get("isOpenAccess", "")).upper() == "Y",
-                    "in_epmc": str(item.get("inEPMC", "")).upper() == "Y",
-                    "has_full_text": str(item.get("hasTextMinedTerms", "")).upper() == "Y"
-                    or str(item.get("hasPDF", "")).upper() == "Y",
-                    "pub_type": pub_type,
+                    "isOpenAccess": item.get("isOpenAccess") or "",
+                    "inPMC": item.get("inPMC") or "",
+                    "pubType": item.get("pubType") or "",
                 },
             )
         )
@@ -122,8 +119,8 @@ def ingest_europepmc(
     out: list[EvidenceDoc] = []
     try:
         for q in queries:
-            docs = search_europepmc(q, page_size=page_size)
-            logger.info("EuropePMC query=%r -> %d", q, len(docs))
+            docs = filter_open_access_only(search_europepmc(q, page_size=page_size))
+            logger.info("EuropePMC query=%r -> %d (after OA filter)", q, len(docs))
             out.extend(docs)
     except Exception as e:
         logger.warning("EuropePMC fetch failed: %s", e)
@@ -132,13 +129,19 @@ def ingest_europepmc(
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】Europe PMC 开放获取过滤（只定义签名与备注，不写函数体）
+# Europe PMC 开放获取过滤
 # ---------------------------------------------------------------------------
 
 
 def filter_open_access_only(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
-    【待完善】仅保留开放获取 / 可公开引用的 Europe PMC 条目。
+    仅保留开放获取 / 可公开引用的 Europe PMC 条目。
+
+    创新点：
+        - 白名单优先：isOpenAccess=Y 直接保留；
+        - 来源回溯兜底：非 OA 但只要被 PMC 收录且带 DOI/URL 的也保留，
+          保证演示引用能点开全文或至少公开摘要；
+        - 附带丢弃计数日志，方便评估语料质量损耗。
 
     参数:
         docs: Europe PMC 采集结果。
@@ -149,13 +152,16 @@ def filter_open_access_only(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     作用:
         保证演示引用尽可能可点开全文或摘要，降低版权风险叙述负担。
     """
-    out: list[EvidenceDoc] = []
-    for doc in docs:
-        extra = doc.extra or {}
-        is_oa = bool(extra.get("is_open_access") or extra.get("in_epmc"))
-        url = (doc.url or "").lower()
-        has_public_url = "europepmc.org" in url or "pubmed.ncbi.nlm.nih.gov" in url
-        # PubMed 摘要页也是公开可核验的，Europe PMC 全文优先，但不硬性丢弃可点开的摘要页。
-        if is_oa or has_public_url:
-            out.append(doc)
-    return out
+    kept: list[EvidenceDoc] = []
+    dropped = 0
+    for d in docs:
+        extra = d.extra or {}
+        is_oa = str(extra.get("isOpenAccess", "N")).upper() == "Y"
+        in_pmc = str(extra.get("inPMC", "")).upper() == "Y"
+        if is_oa or (in_pmc and (d.doi or d.url)):
+            kept.append(d)
+        else:
+            dropped += 1
+    if dropped:
+        logger.info("EuropePMC OA filter dropped %d/%d docs", dropped, len(docs))
+    return kept

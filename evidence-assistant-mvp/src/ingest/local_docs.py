@@ -7,8 +7,8 @@
 
 from __future__ import annotations
 
-import re
 import logging
+import re
 from pathlib import Path
 
 from src.config import get_settings
@@ -164,104 +164,124 @@ def ingest_local(include_seed: bool = True) -> list[EvidenceDoc]:
     local_dir.mkdir(parents=True, exist_ok=True)
     docs: list[EvidenceDoc] = []
     if include_seed:
-        docs.extend(EvidenceDoc.model_validate(d) for d in SEED_DOCS)
+        docs.extend(enrich_local_doc_tags(d) for d in (EvidenceDoc.model_validate(s) for s in SEED_DOCS))
     for pdf in local_dir.glob("*.pdf"):
-        docs.extend(load_pdf_as_docs(pdf))
+        docs.extend(enrich_local_doc_tags(d) for d in load_pdf_as_docs(pdf))
     for md_file in local_dir.glob("*.md"):
-        docs.extend(split_long_local_markdown(md_file))
-    docs = [enrich_local_doc_tags(d) for d in docs]
+        text = md_file.read_text(encoding="utf-8")
+        if len(text) > 20000:
+            md_docs = split_long_local_markdown(md_file)
+        else:
+            md_docs = [
+                EvidenceDoc(
+                    doc_id=f"local:md:{md_file.stem}",
+                    source="local",
+                    title=md_file.stem,
+                    text=text,
+                    tags=["local", "ebook"],
+                    evidence_level="ebook",
+                )
+            ]
+        docs.extend(enrich_local_doc_tags(d) for d in md_docs)
     logger.info("Local ingest -> %d docs", len(docs))
     return docs
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】本地语料增强（只定义签名与备注，不写函数体）
+# 本地语料增强
 # ---------------------------------------------------------------------------
+
+# 主题标签关键词表（与 pubmed/clinicaltrials 的 _tags 口径保持一致）
+_TAG_MAP = {
+    "hypertension": ["hypertension", "blood pressure", "高血压", "血压"],
+    "hyperlipidemia": ["lipid", "cholesterol", "血脂", "胆固醇"],
+    "diabetes": ["diabetes", "glycemic", "糖尿病", "血糖"],
+    "cardiovascular": ["cardiovascular", "coronary", "心血管", "冠心病"],
+    "diet": ["diet", "dietary", "nutrition", "饮食", "营养", "sodium", "钠"],
+    "mediterranean": ["mediterranean", "地中海"],
+    "guideline": ["guideline", "指南", "recommendation"],
+}
 
 
 def enrich_local_doc_tags(doc: EvidenceDoc) -> EvidenceDoc:
     """
-    【待完善】根据标题与正文自动补全本地文档的 tags / evidence_level。
+    根据标题与正文自动补全本地文档的 tags / evidence_level。
+
+    创新点：
+        - 复用任务①的 normalize_evidence_level：仅当等级为 other 时才从标题推断，
+          种子/PDF/Markdown 的显式等级不被覆盖；
+        - 标签关键词表与 pubmed/clinicaltrials 同口径，保证跨源过滤一致。
 
     参数:
         doc: 本地 EvidenceDoc（种子、PDF 或 Markdown）。
 
     返回:
-        EvidenceDoc: 补全标签后的新文档（或原地更新后的同一对象）。
+        EvidenceDoc: 补全标签后的文档（原地更新并返回同一对象）。
 
     作用:
         提升本地语料在混合检索中的可过滤性与加权效果。
     """
     blob = f"{doc.title} {doc.text}".lower()
-    mapping = {
-        "hypertension": ["hypertension", "blood pressure", "高血压", "血压", "降压"],
-        "hyperlipidemia": ["hyperlipidemia", "dyslipidemia", "cholesterol", "lipid", "血脂", "胆固醇", "ldl", "hdl"],
-        "diabetes": ["diabetes", "glycemic", "glucose", "糖尿病", "血糖"],
-        "cardiovascular": ["cardiovascular", "coronary", "heart", "心血管", "冠心病", "卒中", "脑血管"],
-        "diet": ["diet", "dietary", "nutrition", "饮食", "营养", "膳食", "食物"],
-        "mediterranean": ["mediterranean", "地中海"],
-        "dash": ["dash", "dietary approaches to stop hypertension"],
-        "sodium": ["sodium", "salt", "钠", "盐", "限盐", "限钠"],
-        "statin": ["statin", "他汀"],
-        "guideline": ["guideline", "recommendation", "指南", "共识", "建议"],
-        "rct": ["randomized", "randomised", "randomized controlled", "rct", "随机", "临床试验"],
-        "meta": ["meta-analysis", "systematic review", "系统评价", "荟萃", "meta分析"],
-    }
-    tags = set(doc.tags)
-    for tag, keys in mapping.items():
-        if any(k.lower() in blob for k in keys):
-            tags.add(tag)
-    tags.add("local")
-
-    # 种子资料可能已经人工标好 meta/rct/guideline，不用自动规则覆盖。
-    if doc.evidence_level in ("other", "ebook"):
-        raw_type = " ".join(sorted(tags))
-        inferred = normalize_evidence_level(raw_type, doc.title)
-        level = inferred if inferred != "other" else doc.evidence_level
-    else:
-        level = doc.evidence_level
-    if level == "other" and doc.source == "local":
-        level = "ebook"
-    return doc.model_copy(update={"tags": sorted(tags), "evidence_level": level})
+    for tag, keys in _TAG_MAP.items():
+        if any(k.lower() in blob for k in keys) and tag not in doc.tags:
+            doc.tags.append(tag)
+    if doc.evidence_level == "other":
+        doc.evidence_level = normalize_evidence_level("", doc.title)
+    return doc
 
 
-def _slugify(value: str) -> str:
-    """生成本地文档 ID 片段，保留中英文数字。"""
-    slug = re.sub(r"[^\w\u4e00-\u9fff]+", "-", value.strip().lower())
-    return slug.strip("-") or "section"
+def _md_doc(doc_id: str, title: str, text: str) -> EvidenceDoc:
+    """构造一条本地 Markdown 文档（统一 tags/等级，便于 enrich 二次补全）。"""
+    return EvidenceDoc(
+        doc_id=doc_id,
+        source="local",
+        title=title,
+        text=text,
+        year=None,
+        url="",
+        tags=["local", "ebook"],
+        evidence_level="ebook",
+    )
 
 
-def _split_oversized_section(text: str, max_chars: int) -> list[str]:
-    """标题段落仍过长时，按段落/字符窗口继续拆分。"""
-    text = text.strip()
-    if len(text) <= max_chars:
-        return [text] if text else []
+def _split_paragraphs(text: str, max_chars: int) -> list[str]:
+    """把超长章节按空行段落重新聚合成 ≤ max_chars 的若干块。"""
+    paras = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
     parts: list[str] = []
-    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-    current = ""
-    for para in paragraphs:
-        if len(para) > max_chars:
-            if current:
-                parts.append(current.strip())
-                current = ""
-            for i in range(0, len(para), max_chars):
-                piece = para[i : i + max_chars].strip()
-                if piece:
-                    parts.append(piece)
-            continue
-        if current and len(current) + len(para) + 2 > max_chars:
-            parts.append(current.strip())
-            current = para
+    buf = ""
+    for p in paras:
+        if len(p) > max_chars:  # 单段超限：先落盘已有缓冲，再按句切分
+            if buf:
+                parts.append(buf)
+                buf = ""
+            cur = ""
+            for sent in re.split(r"(?<=[。！？.!?])", p):
+                if len(cur) + len(sent) > max_chars and cur:
+                    parts.append(cur)
+                    cur = sent
+                else:
+                    cur += sent
+            if cur:
+                parts.append(cur)
+        elif len(buf) + len(p) + 1 <= max_chars:
+            buf = f"{buf}\n{p}".strip()
         else:
-            current = f"{current}\n\n{para}" if current else para
-    if current.strip():
-        parts.append(current.strip())
+            parts.append(buf)
+            buf = p
+    if buf:
+        parts.append(buf)
     return parts
 
 
 def split_long_local_markdown(md_path: Path, max_chars: int = 8000) -> list[EvidenceDoc]:
     """
-    【待完善】将超长本地 Markdown 按标题层级切成多条 EvidenceDoc。
+    将超长本地 Markdown 按标题层级切成多条 EvidenceDoc。
+
+    创新点：
+        - 标题结构感知：以 # ~ ###### 为界切分章节，章节标题成为新文档标题，
+          检索命中时上下文更准确；
+        - 超长章节按空行段落二次聚合成 ≤ max_chars 的片段，避免截断语义；
+        - doc_id 带章节序号，保证溯源可定位到具体章节。
 
     参数:
         md_path: Markdown 文件路径。
@@ -273,43 +293,34 @@ def split_long_local_markdown(md_path: Path, max_chars: int = 8000) -> list[Evid
     作用:
         避免整本电子书塞进单条记录，改善切块与检索粒度。
     """
-    text = md_path.read_text(encoding="utf-8")
-    if not text.strip():
-        return []
+    lines = md_path.read_text(encoding="utf-8").splitlines()
+    sections: list[tuple[str, list[str]]] = []
+    cur_title = md_path.stem
+    cur: list[str] = []
 
-    heading_re = re.compile(r"^(#{1,3})\s+(.+?)\s*$", re.M)
-    matches = list(heading_re.finditer(text))
-    sections: list[tuple[str, str]] = []
+    def flush() -> None:
+        if cur:
+            sections.append((cur_title, cur.copy()))
 
-    if not matches:
-        sections = [(md_path.stem, text)]
-    else:
-        intro = text[: matches[0].start()].strip()
-        if intro:
-            sections.append((md_path.stem, intro))
-        for idx, match in enumerate(matches):
-            title = match.group(2).strip() or md_path.stem
-            start = match.end()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-            body = text[start:end].strip()
-            section_text = f"# {title}\n\n{body}" if body else f"# {title}"
-            sections.append((title, section_text))
+    for line in lines:
+        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        if m:
+            flush()
+            cur_title = m.group(2).strip() or cur_title
+            cur = [line]
+        else:
+            cur.append(line)
+    flush()
 
     docs: list[EvidenceDoc] = []
-    base = _slugify(md_path.stem)
-    for section_index, (title, body) in enumerate(sections):
-        for part_index, part in enumerate(_split_oversized_section(body, max_chars=max_chars)):
-            suffix = f"s{section_index}p{part_index}"
-            section_slug = _slugify(title)[:80]
-            doc = EvidenceDoc(
-                doc_id=f"local:md:{base}:{section_slug}:{suffix}",
-                source="local",
-                title=title if part_index == 0 else f"{title} ({part_index + 1})",
-                text=part[:max_chars],
-                url=str(md_path),
-                tags=["local"],
-                evidence_level="ebook",
-                extra={"path": str(md_path), "section_index": section_index, "part_index": part_index},
-            )
-            docs.append(enrich_local_doc_tags(doc))
+    for i, (title, body) in enumerate(sections):
+        text = "\n".join(body).strip()
+        if not text:
+            continue
+        base_id = f"local:md:{md_path.stem}:{i}"
+        if len(text) <= max_chars:
+            docs.append(_md_doc(base_id, title, text))
+        else:
+            for j, part in enumerate(_split_paragraphs(text, max_chars)):
+                docs.append(_md_doc(f"{base_id}:{j}", f"{title}（{j + 1}）", part))
     return docs
