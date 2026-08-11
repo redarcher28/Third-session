@@ -92,6 +92,10 @@ echo "启动 OpenWebUI 主前端：http://$OPENWEBUI_HOST:$OPENWEBUI_PORT"
 export WEBUI_NAME="$OPENWEBUI_NAME"
 export DEFAULT_LOCALE="${DEFAULT_LOCALE:-zh-CN}"
 export ENABLE_EVALUATION_ARENA_MODELS="false"
+echo "安装 OpenWebUI 证据模型设置桥接"
+conda run --no-capture-output "${OPENWEBUI_CONDA_ARGS[@]}" \
+  python "$PROJECT_ROOT/scripts/install_openwebui_bridge.py" \
+    --backend-url "http://$BACKEND_HOST:$BACKEND_PORT"
 OPENAI_API_BASE_URL="http://$BACKEND_HOST:$BACKEND_PORT/v1" \
 OPENAI_API_BASE_URLS="http://$BACKEND_HOST:$BACKEND_PORT/v1" \
 OPENAI_API_KEY="evidence-local" \
