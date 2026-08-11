@@ -83,6 +83,11 @@ def search_europepmc(query: str, page_size: int = 15) -> list[EvidenceDoc]:
                 evidence_level=level,  # type: ignore[arg-type]
                 journal=item.get("journalTitle") or "",
                 doi=item.get("doi") or "",
+                extra={
+                    "isOpenAccess": item.get("isOpenAccess") or "",
+                    "inPMC": item.get("inPMC") or "",
+                    "pubType": item.get("pubType") or "",
+                },
             )
         )
     return docs
@@ -114,8 +119,8 @@ def ingest_europepmc(
     out: list[EvidenceDoc] = []
     try:
         for q in queries:
-            docs = search_europepmc(q, page_size=page_size)
-            logger.info("EuropePMC query=%r -> %d", q, len(docs))
+            docs = filter_open_access_only(search_europepmc(q, page_size=page_size))
+            logger.info("EuropePMC query=%r -> %d (after OA filter)", q, len(docs))
             out.extend(docs)
     except Exception as e:
         logger.warning("EuropePMC fetch failed: %s", e)
@@ -124,13 +129,19 @@ def ingest_europepmc(
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】Europe PMC 开放获取过滤（只定义签名与备注，不写函数体）
+# Europe PMC 开放获取过滤
 # ---------------------------------------------------------------------------
 
 
 def filter_open_access_only(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
-    【待完善】仅保留开放获取 / 可公开引用的 Europe PMC 条目。
+    仅保留开放获取 / 可公开引用的 Europe PMC 条目。
+
+    创新点：
+        - 白名单优先：isOpenAccess=Y 直接保留；
+        - 来源回溯兜底：非 OA 但只要被 PMC 收录且带 DOI/URL 的也保留，
+          保证演示引用能点开全文或至少公开摘要；
+        - 附带丢弃计数日志，方便评估语料质量损耗。
 
     参数:
         docs: Europe PMC 采集结果。
@@ -141,4 +152,16 @@ def filter_open_access_only(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     作用:
         保证演示引用尽可能可点开全文或摘要，降低版权风险叙述负担。
     """
-    raise NotImplementedError("待队员实现：filter_open_access_only")
+    kept: list[EvidenceDoc] = []
+    dropped = 0
+    for d in docs:
+        extra = d.extra or {}
+        is_oa = str(extra.get("isOpenAccess", "N")).upper() == "Y"
+        in_pmc = str(extra.get("inPMC", "")).upper() == "Y"
+        if is_oa or (in_pmc and (d.doi or d.url)):
+            kept.append(d)
+        else:
+            dropped += 1
+    if dropped:
+        logger.info("EuropePMC OA filter dropped %d/%d docs", dropped, len(docs))
+    return kept

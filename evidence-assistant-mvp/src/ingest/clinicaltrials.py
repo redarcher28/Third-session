@@ -70,11 +70,14 @@ def search_trials(condition: str, page_size: int = 20) -> list[EvidenceDoc]:
         start = proto.get("statusModule", {}).get("startDateStruct", {}).get("date")
         if start and len(start) >= 4 and start[:4].isdigit():
             year = int(start[:4])
+        outcome = extract_trial_primary_outcome(study)
         text = (
             f"{brief}\n\nStatus: {status}\n"
             f"Conditions: {', '.join(conditions)}\n"
             f"Interventions: {', '.join(interventions)}"
         )
+        if outcome:
+            text += f"\nPrimary Outcome: {outcome}"
         blob = f"{title} {text}"
         docs.append(
             EvidenceDoc(
@@ -86,7 +89,7 @@ def search_trials(condition: str, page_size: int = 20) -> list[EvidenceDoc]:
                 url=f"https://clinicaltrials.gov/study/{nct}",
                 tags=_tags(blob),
                 evidence_level="rct",
-                extra={"status": status, "conditions": conditions},
+                extra={"status": status, "conditions": conditions, "primary_outcome": outcome},
             )
         )
     return docs
@@ -128,13 +131,18 @@ def ingest_clinicaltrials(
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】临床试验字段增强（只定义签名与备注，不写函数体）
+# 临床试验字段增强
 # ---------------------------------------------------------------------------
 
 
 def extract_trial_primary_outcome(study_json: dict) -> str:
     """
-    【待完善】从 ClinicalTrials API 原始 JSON 中提取主要结局指标描述。
+    从 ClinicalTrials API v2 原始 JSON 中提取主要结局指标描述。
+
+    创新点：
+        - 输出「指标（时间窗）」结构化文本，缺时间窗时仅保留指标；
+        - 主要结局缺失时用次要结局兜底，保证结局字段尽量非空；
+        - 结果同时写入 extra["primary_outcome"]，供 B 组检索过滤/展示使用。
 
     参数:
         study_json: API 返回的单条 study 对象。
@@ -145,4 +153,16 @@ def extract_trial_primary_outcome(study_json: dict) -> str:
     作用:
         丰富试验证据正文，提升回答时对「结局」相关问题的命中率。
     """
-    raise NotImplementedError("待队员实现：extract_trial_primary_outcome")
+    proto = (study_json or {}).get("protocolSection", {})
+    outcomes = proto.get("outcomesModule", {}) or {}
+    for key in ("primaryOutcomes", "secondaryOutcomes"):
+        blocks = []
+        for o in outcomes.get(key) or []:
+            measure = (o.get("measure") or "").strip()
+            if not measure:
+                continue
+            tf = (o.get("timeFrame") or "").strip()
+            blocks.append(measure + (f"（{tf}）" if tf else ""))
+        if blocks:
+            return "；".join(blocks)[:500]
+    return ""

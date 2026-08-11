@@ -8,6 +8,7 @@ PubMed 采集模块（NCBI E-utilities）。
 from __future__ import annotations
 
 import logging
+import re
 import time
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -151,12 +152,13 @@ def _tags_from_text(text: str) -> list[str]:
     return tags
 
 
-DEFAULT_QUERIES = [
-    "hypertension long-term antihypertensive therapy guidelines[Publication Type]",
-    "hyperlipidemia lifestyle intervention OR statin evidence",
-    "Mediterranean diet cardiovascular risk meta-analysis",
-    "sodium reduction hypertension systematic review",
-    "diabetes dietary intervention cardiovascular",
+# 默认检索任务：按 PICO（人群/干预/结局）结构化生成，见 build_mesh_aware_query
+DEFAULT_PICO = [
+    {"disease": "hypertension", "intervention": "antihypertensive agents", "outcome": "cardiovascular events"},
+    {"disease": "hyperlipidemia", "intervention": "lifestyle intervention OR statin", "outcome": "LDL cholesterol"},
+    {"disease": "mediterranean diet", "intervention": "", "outcome": "cardiovascular risk"},
+    {"disease": "hypertension", "intervention": "sodium reduction OR dietary sodium", "outcome": "blood pressure"},
+    {"disease": "type 2 diabetes", "intervention": "dietary intervention", "outcome": "cardiovascular risk"},
 ]
 
 
@@ -168,13 +170,13 @@ def ingest_pubmed(
     按默认/自定义查询批量采集 PubMed 文献。
 
     参数:
-        queries: 检索式列表；None 时使用 DEFAULT_QUERIES。
+        queries: 检索式列表；None 时由 DEFAULT_PICO 用 build_mesh_aware_query 生成。
         retmax_per_query: 每个查询最多拉取条数。
 
     返回:
         list[EvidenceDoc]: 去重前的原始采集结果（上层可再 merge）。
     """
-    queries = queries or DEFAULT_QUERIES
+    queries = queries or [build_mesh_aware_query(**p) for p in DEFAULT_PICO]
     all_ids: list[str] = []
     try:
         for q in queries:
@@ -200,13 +202,33 @@ def ingest_pubmed(
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】PubMed 采集增强（只定义签名与备注，不写函数体）
+# PubMed 采集增强
 # ---------------------------------------------------------------------------
+
+
+def _pico_term(term: str, *, mesh: bool = False) -> str:
+    """把 PICO 单个要素转成 PubMed 检索片段：多词加引号，支持 OR 拆分，可挂 MeSH。"""
+    subs = [s for s in re.split(r"\s+OR\s+", term.strip(), flags=re.IGNORECASE) if s.strip()]
+    parts = []
+    for sub in subs:
+        sub = " ".join(sub.split())
+        quoted = f'"{sub}"' if len(sub.split()) > 1 else sub
+        if mesh:
+            parts.append(f"{quoted}[Title/Abstract] OR {sub}[MeSH Terms]")
+        else:
+            parts.append(f"{quoted}[Title/Abstract]")
+    return f"({ ' OR '.join(parts) })" if len(parts) > 1 else parts[0]
 
 
 def build_mesh_aware_query(disease: str, intervention: str = "", outcome: str = "") -> str:
     """
-    【待完善】根据疾病/干预/结局组装更规范的 PubMed 检索式（可含 MeSH）。
+    根据疾病/干预/结局组装 PICO 结构化 PubMed 检索式（可含 MeSH）。
+
+    创新点：
+        - 按 PICO 分段用 AND 组合，避免整句模糊匹配，召回/精度可分别调优；
+        - 疾病要素额外挂 MeSH Terms 提升召回，干预/结局限定 Title/Abstract 提升精度；
+        - 要素内部支持 "A OR B" 拆分，保留 OR 语义；
+        - 末尾统一追加 hasabstract[text]，过滤无摘要记录，保证正文可用。
 
     参数:
         disease: 疾病或人群关键词。
@@ -219,4 +241,13 @@ def build_mesh_aware_query(disease: str, intervention: str = "", outcome: str = 
     作用:
         提高文献召回精度，减少噪声 PMID。
     """
-    raise NotImplementedError("待队员实现：build_mesh_aware_query")
+    parts = []
+    if disease:
+        parts.append(_pico_term(disease, mesh=True))
+    if intervention:
+        parts.append(_pico_term(intervention))
+    if outcome:
+        parts.append(_pico_term(outcome))
+    if not parts:
+        return ""
+    return " AND ".join(parts) + " AND hasabstract[text]"
