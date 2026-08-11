@@ -70,17 +70,29 @@ python scripts/build_kb.py
 python scripts/smoke_demo.py
 ```
 
-### 3. 启动界面 / API
+### 3. 启动统一 Web 界面 / API
 
 ```bash
-# Streamlit 三 Tab 演示
+# FastAPI + 统一赛道一/二 Web 界面（推荐）
+uvicorn src.app.api:app --reload --port 8000
+# 浏览器打开 http://127.0.0.1:8000/
+
+# Streamlit 备用课堂界面（统一赛道一/二选择器 + 赛道三评测）
 streamlit run src/app/ui.py
 
 # FastAPI
-uvicorn src.app.api:app --reload --port 8000
-# POST /ask  {"question":"...","track":"clinical"}
+# GET  /config/tracks
+# GET  /kb/stats
+# POST /ask  {"question":"...","track":"clinical","top_k":5}
+# POST /ask/batch  [{"question":"...","track":"nutrition"}]
 # POST /eval/run
 ```
+
+赛道一和赛道二共用同一条后端链路：`query reformulation → 混合检索 → grounded
+synthesis → citation validation`。差异由系统预置 Prompt 和赛道配置控制，前端只切换
+回答视角，不重复实现一套业务逻辑。
+
+本次 B 组前后端实现记录见：[docs/统一助手实现记录.md](docs/统一助手实现记录.md)。
 
 ### 4. 跑评测（赛道三）
 
