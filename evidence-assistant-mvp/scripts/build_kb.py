@@ -30,22 +30,38 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     settings.raw_path.mkdir(parents=True, exist_ok=True)
     local_docs = ingest_local(include_seed=True)
     save_docs(local_docs, settings.raw_path / "local_docs.json")
-    pubmed_docs = [] if skip_live else ingest_pubmed(retmax_per_query=retmax)
-    if pubmed_docs:
-        save_docs(pubmed_docs, settings.raw_path / "pubmed.json")
-    ct_docs = [] if skip_live else ingest_clinicaltrials(page_size=8)
-    if ct_docs:
-        save_docs(ct_docs, settings.raw_path / "clinicaltrials.json")
-    epmc_docs = [] if skip_live else ingest_europepmc(page_size=10)
-    if epmc_docs:
-        save_docs(epmc_docs, settings.raw_path / "europepmc.json")
+    if skip_live:
+        # 离线模式：加载已保存的联网采集结果（避免覆盖队友/历史语料）
+        pubmed_docs = load_docs(settings.raw_path / "pubmed.json")
+        ct_docs = load_docs(settings.raw_path / "clinicaltrials.json")
+        epmc_docs = load_docs(settings.raw_path / "europepmc.json")
+        logger.info(
+            "Offline ingest from saved raw: pubmed=%d clinicaltrials=%d europepmc=%d",
+            len(pubmed_docs), len(ct_docs), len(epmc_docs),
+        )
+    else:
+        pubmed_docs = ingest_pubmed(retmax_per_query=retmax)
+        if pubmed_docs:
+            save_docs(pubmed_docs, settings.raw_path / "pubmed.json")
+        ct_docs = ingest_clinicaltrials(page_size=8)
+        if ct_docs:
+            save_docs(ct_docs, settings.raw_path / "clinicaltrials.json")
+        epmc_docs = ingest_europepmc(page_size=10)
+        if epmc_docs:
+            save_docs(epmc_docs, settings.raw_path / "europepmc.json")
     # 人工整理的文献清单（如 D1PM 配套文献，doc_id=pmid:XXXX，可回查）
     lit_docs: list[EvidenceDoc] = []
     lit_path = settings.raw_path / "literature.json"
     if lit_path.exists():
         lit_docs = load_docs(lit_path)
         logger.info("Literature list -> %d docs", len(lit_docs))
-    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs)
+    # 批量语料合集（如 500-collection，doc_id=pmid:XXXX + 影响因子）
+    coll_docs: list[EvidenceDoc] = []
+    coll_path = settings.raw_path / "collection_500.json"
+    if coll_path.exists():
+        coll_docs = load_docs(coll_path)
+        logger.info("Collection corpus -> %d docs", len(coll_docs))
+    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs, coll_docs)
     all_docs = dedupe_by_doi_or_title(all_docs)
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)
