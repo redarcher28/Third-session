@@ -17,7 +17,7 @@ from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
 from src.kb.chunking import docs_to_chunks, merge_tiny_chunks, validate_chunk_traceability
-from src.kb.store import EvidenceStore
+from src.kb.store import EvidenceStore, export_store_stats, rebuild_collection_from_processed
 from src.kb.wiki import generate_wiki_pages
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -48,7 +48,14 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     return out
 
 
-def build_kb(*, skip_live: bool = False, skip_ingest: bool = False, reset: bool = True) -> None:
+def build_kb(
+    *,
+    skip_live: bool = False,
+    skip_ingest: bool = False,
+    reset: bool = True,
+    incremental: bool = False,
+    stats: bool = False,
+) -> None:
     settings = get_settings()
     if not skip_ingest:
         _run_ingest(skip_live=skip_live)
@@ -64,16 +71,23 @@ def build_kb(*, skip_live: bool = False, skip_ingest: bool = False, reset: bool 
     all_docs = merge_docs(docs, wiki_docs)
     save_docs(all_docs, settings.processed_path / "documents_with_wiki.json")
 
-    chunks = docs_to_chunks(all_docs)
-    chunks = merge_tiny_chunks(chunks)
-    trace = validate_chunk_traceability(chunks)
-    if not trace["ok"]:
-        logger.warning("Chunk traceability issues: %s", trace)
-    store = EvidenceStore()
-    if reset:
-        store.reset()
-    n = store.upsert_chunks(chunks)
-    logger.info("Knowledge base ready: %d chunks (store count=%d)", n, store.count())
+    if incremental:
+        # 增量模式：指纹跳过未变 chunk + 剪枝已删除文档（与 kb_tools.py rebuild --incremental 同路径）
+        n = rebuild_collection_from_processed(reset=False)
+        logger.info("Incremental rebuild done: %d chunks upserted", n)
+    else:
+        chunks = docs_to_chunks(all_docs)
+        chunks = merge_tiny_chunks(chunks)
+        trace = validate_chunk_traceability(chunks)
+        if not trace["ok"]:
+            logger.warning("Chunk traceability issues: %s", trace)
+        store = EvidenceStore()
+        if reset:
+            store.reset()
+        n = store.upsert_chunks(chunks)
+        logger.info("Knowledge base ready: %d chunks (store count=%d)", n, store.count())
+    if stats:
+        export_store_stats(settings.processed_path / "store_stats.json")
 
 
 def main() -> None:
@@ -81,11 +95,15 @@ def main() -> None:
     parser.add_argument("--skip-live", action="store_true")
     parser.add_argument("--skip-ingest", action="store_true")
     parser.add_argument("--no-reset", action="store_true")
+    parser.add_argument("--incremental", action="store_true", help="增量重建：跳过未变、剪枝已删")
+    parser.add_argument("--stats", action="store_true", help="构建后导出知识库统计")
     args = parser.parse_args()
     build_kb(
         skip_live=args.skip_live,
         skip_ingest=args.skip_ingest,
         reset=not args.no_reset,
+        incremental=args.incremental,
+        stats=args.stats,
     )
 
 
