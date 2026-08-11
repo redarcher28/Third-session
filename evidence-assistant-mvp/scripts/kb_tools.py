@@ -23,7 +23,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.kb.store import export_store_stats, rebuild_collection_from_processed  # noqa: E402
-from src.kb.wiki import WIKI_TOPICS, refresh_single_wiki_page  # noqa: E402
+from src.kb.wiki import WIKI_TOPICS, lint_wiki_pages, refresh_single_wiki_page  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -62,6 +62,18 @@ def cmd_refresh(slug: str | None) -> None:
         sys.exit(1)
 
 
+def cmd_lint() -> None:
+    """Lint 检查主题页维护质量（孤立页/缺失字段/失效引用/更新标记）。"""
+    report = lint_wiki_pages()
+    if report["ok"]:
+        print(f"Lint 通过: 检查了 {report['checked']} 个主题页，无问题")
+        return
+    print(f"Lint 发现问题（检查 {report['checked']} 页）:")
+    for issue in report["issues"]:
+        print(f"  - {issue}")
+    sys.exit(1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="知识库运维与统计（A 组产出，B 组共用）")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -75,6 +87,8 @@ def main() -> None:
     p = sub.add_parser("refresh-wiki", help="刷新单个 Wiki 主题页")
     p.add_argument("slug", nargs="?", default=None, help="主题 slug；省略则列出可用主题")
 
+    sub.add_parser("lint", help="Lint 检查主题页（孤立页/缺失字段/失效引用）")
+
     args = parser.parse_args()
     if args.cmd == "stats":
         cmd_stats(args.out)
@@ -82,6 +96,8 @@ def main() -> None:
         cmd_rebuild(args.incremental)
     elif args.cmd == "refresh-wiki":
         cmd_refresh(args.slug)
+    elif args.cmd == "lint":
+        cmd_lint()
 
 
 if __name__ == "__main__":

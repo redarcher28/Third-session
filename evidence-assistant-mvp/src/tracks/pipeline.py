@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from typing import Any
 
 from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer
@@ -56,24 +57,34 @@ def _tokenize(text: str) -> set[str]:
     return set(re.findall(r"[\w\u4e00-\u9fff]+", text.lower()))
 
 
-def _is_low_relevance(question: str, contexts: list[dict[str, Any]]) -> bool:
+def _is_low_relevance(
+    question: str,
+    contexts: list[dict[str, Any]],
+    expect_levels: tuple[str, ...] | None = None,
+) -> str | None:
     """
-    判断是否应拒答（越界、领域外、或与证据几乎无重叠）。
+    判断是否应拒答，并返回拒答原因（None 表示可以正常回答）。
+
+    材料第 29/31 页：
+        - out_of_scope: 问题越界/伪科学；
+        - low_relevance: 领域外或与证据几乎无重叠；
+        - missing_evidence_type: 未命中所需证据类型（规则 2，临床赛道要求指南/RCT 级证据）。
 
     参数:
         question: 用户原问题。
         contexts: 检索到的证据。
+        expect_levels: 期望的证据等级集合；命中任一即可放行。
 
     返回:
-        bool: True 表示应拒答。
+        str | None: 拒答原因，None 表示可正常回答。
     """
     q = question.lower()
     if any(term.lower() in q for term in OUT_OF_SCOPE):
-        return True
+        return "out_of_scope"
     if not any(h.lower() in q for h in DOMAIN_HINTS):
         q_tokens = _tokenize(question)
         if not contexts:
-            return True
+            return "low_relevance"
         overlap_scores = []
         for c in contexts[:3]:
             c_tokens = _tokenize(str(c.get("text") or "") + " " + str(c.get("title") or ""))
@@ -81,10 +92,45 @@ def _is_low_relevance(question: str, contexts: list[dict[str, Any]]) -> bool:
                 overlap_scores.append(0.0)
             else:
                 overlap_scores.append(len(q_tokens & c_tokens) / max(1, len(q_tokens)))
-        return max(overlap_scores, default=0.0) < 0.12
+        if max(overlap_scores, default=0.0) < 0.12:
+            return "low_relevance"
     if not contexts:
-        return True
-    return False
+        return "low_relevance"
+    if expect_levels and not any(str(c.get("evidence_level")) in expect_levels for c in contexts):
+        return "missing_evidence_type"
+    return None
+
+
+def _build_qualified_refusal(
+    question: str,
+    contexts: list[dict[str, Any]],
+    reason: str,
+) -> str:
+    """
+    合格拒答三要素：已检索到什么 + 缺什么 + 建议补查什么（材料第 30 页）。
+
+    合格拒答不等于「我不能回答」——要说明检索结果与下一步，帮助用户/评委判断。
+    """
+    if not contexts:
+        got = "未检索到任何证据片段"
+    else:
+        counts = Counter(str(c.get("source")) for c in contexts)
+        got = f"检索到 {len(contexts)} 条证据，来源分布 {dict(counts)}"
+    if reason == "out_of_scope":
+        miss = "该问题不在本系统覆盖领域（高血压/血脂/糖尿病/心血管/饮食营养）内"
+        suggest = "可补充该主题的公开指南或研究后重建知识库；必要时请咨询医疗机构"
+    elif reason == "missing_evidence_type":
+        miss = "检索到的证据等级不足（缺少指南/系统综述/RCT 级别证据）"
+        suggest = "建议补充检索该主题的指南或随机对照试验（PubMed/ClinicalTrials）后重建知识库"
+    else:
+        miss = "证据相关性不足，无法支撑可靠结论"
+        suggest = "建议补充检索该主题的指南或随机对照试验（PubMed/ClinicalTrials）后重建知识库"
+    return (
+        f"当前知识库中未找到能直接支持这一结论的高质量证据。\n"
+        f"我能确认的是：{got}；但{miss}。\n"
+        f"如需继续：{suggest}。\n"
+        "本系统不提供个体化诊疗建议。"
+    )
 
 
 def _live_augment(query: str, contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -174,15 +220,18 @@ def ask(
     if use_live_tools:
         contexts = _live_augment(rewritten, contexts)[: top_k + 2]
 
-    if _is_low_relevance(question, contexts):
+    # 临床赛道要求指南/系统综述/RCT 级证据（规则 2：缺预期证据类型→标注不足）
+    expect_levels = tuple(PREFER_LEVELS[:3]) if track == "clinical" else None
+    reject_reason = _is_low_relevance(question, contexts, expect_levels=expect_levels)
+    if reject_reason:
         return AskResponse(
-            answer=REFUSAL_TEMPLATE + DISCLAIMER,
+            answer=_build_qualified_refusal(question, contexts, reject_reason) + DISCLAIMER,
             citations=[],
             contexts=[],
             refused=True,
             rewritten_query=rewritten,
             track=track,
-            citation_check={"ok": True, "has_citations": False, "reason": "low_relevance"},
+            citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
         )
 
     answer, citations, refused = generate_answer(

@@ -11,6 +11,27 @@ from typing import Iterable
 from src.models import Chunk, EvidenceDoc
 
 
+def _table_safe_end(text: str, start: int, end: int) -> int:
+    """
+    表格保护（材料第 12 页：不拆散表格，表格作为不可再分的整体单元）。
+
+    若切点所在行是 Markdown 表格行（整行以 | 开头），把切点延伸到表格块结束。
+    """
+    line_start = text.rfind("\n", start, end) + 1
+    if not text[line_start:end].lstrip().startswith("|"):
+        return end
+    while end < len(text):
+        nl = text.find("\n", end)
+        if nl == -1:
+            return len(text)
+        end = nl + 1
+        rest = text[end:]
+        nxt = rest.split("\n", 1)[0] if rest else ""
+        if not nxt.lstrip().startswith("|"):
+            return end
+    return end
+
+
 def _split_text(text: str, max_chars: int = 1200, overlap: int = 150) -> list[str]:
     """
     按字符长度切分文本，尽量在句号处断开，并保留重叠窗口。
@@ -23,7 +44,7 @@ def _split_text(text: str, max_chars: int = 1200, overlap: int = 150) -> list[st
     返回:
         list[str]: 文本块列表。
     """
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[ \t]+", " ", text).strip()  # 只折叠空格/Tab，保留换行（表格保护依赖行结构）
     if len(text) <= max_chars:
         return [text] if text else []
     chunks: list[str] = []
@@ -38,6 +59,7 @@ def _split_text(text: str, max_chars: int = 1200, overlap: int = 150) -> list[st
                 if idx > max_chars // 3:
                     end = start + idx + len(sep)
                     break
+        end = _table_safe_end(text, start, end)
         piece = text[start:end].strip()
         if piece:
             chunks.append(piece)
