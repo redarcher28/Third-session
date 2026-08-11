@@ -45,7 +45,9 @@
       "mediterranean",
       "diet",
       "cardiovascular",
-      "meta"
+      "meta",
+      "hypertension",
+      "hyperlipidemia"
     ],
     "evidence_level": "meta",
     "journal": "",
@@ -62,7 +64,8 @@
     "tags": [
       "hypertension",
       "diet",
-      "guideline"
+      "guideline",
+      "mediterranean"
     ],
     "evidence_level": "meta",
     "journal": "",
@@ -96,7 +99,8 @@
     "tags": [
       "hypertension",
       "diet",
-      "rct"
+      "rct",
+      "hyperlipidemia"
     ],
     "evidence_level": "rct",
     "journal": "",
@@ -111,7 +115,11 @@
     "year": null,
     "url": "",
     "tags": [
-      "local"
+      "local",
+      "ebook",
+      "hypertension",
+      "diet",
+      "guideline"
     ],
     "evidence_level": "ebook",
     "journal": "",
