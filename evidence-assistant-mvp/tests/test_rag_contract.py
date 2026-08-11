@@ -13,8 +13,10 @@ from unittest.mock import patch
 from src.app.openwebui import OpenAIChatRequest, OpenAIMessage, chat_completions
 from src.generation.answer import generate_answer
 from src.models import AskResponse, Citation
+from src.retrieval.hybrid import _tokenize
 from src.tracks.pipeline import ask
 from src.tracks.prompt_profiles import build_synthesis_messages
+from src.tracks.nutrition import append_nutrition_query_aliases
 
 
 def _citation(index: int = 1) -> Citation:
@@ -164,6 +166,21 @@ class RagContractTests(unittest.TestCase):
             top_k=5,
             use_live_tools=False,
         )
+
+    def test_latest_main_nutrition_aliases_reach_chinese_bm25_tokens(self) -> None:
+        rewritten = append_nutrition_query_aliases("膳食纤维对心血管风险有什么研究提示？", "膳食纤维")
+        tokens = _tokenize("膳食纤维与全谷物")
+
+        self.assertIn("dietary fiber whole grains cardiovascular risk", rewritten)
+        self.assertIn("膳食", tokens)
+        self.assertIn("食纤", tokens)
+
+    def test_rebuilt_latest_main_corpus_is_available_to_rag(self) -> None:
+        from src.kb.store import EvidenceStore
+
+        store = EvidenceStore()
+
+        self.assertGreaterEqual(store.count(), 11000)
 
 
 if __name__ == "__main__":
