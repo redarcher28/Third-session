@@ -1,5 +1,5 @@
 {
-  "retrieved_at_utc": "2026-08-11T06:04:47.434163+00:00",
+  "retrieved_at_utc": "2026-08-11T07:45:22.558179+00:00",
   "scope": [
     "hypertension",
     "hyperlipidemia",
@@ -9,40 +9,79 @@
     "Mediterranean diet",
     "DASH diet",
     "dietary sodium",
-    "lifestyle intervention"
+    "lifestyle intervention",
+    "consumer nutrition",
+    "dietary fiber",
+    "whole grains",
+    "plant-based diet",
+    "sugar-sweetened beverages",
+    "ultra-processed foods",
+    "obesity and weight management",
+    "low-carbohydrate diet",
+    "intermittent fasting",
+    "omega-3 fatty acids"
   ],
+  "track_scopes": {
+    "track1_clinical_assistant": [
+      "hypertension",
+      "hyperlipidemia",
+      "statin",
+      "type 2 diabetes",
+      "cardiovascular prevention",
+      "clinical trials",
+      "guidelines"
+    ],
+    "track2_nutrition_assistant": [
+      "Mediterranean diet",
+      "DASH diet",
+      "dietary sodium",
+      "dietary fiber",
+      "whole grains",
+      "plant-based diet",
+      "sugar-sweetened beverages",
+      "ultra-processed foods",
+      "obesity and weight management",
+      "consumer nutrition guidance"
+    ]
+  },
   "authoritative_sources": [
     {
       "name": "PubMed E-utilities",
       "endpoint": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
       "api_documentation": "https://www.ncbi.nlm.nih.gov/books/NBK25501/",
-      "query_count": 22,
+      "query_count": 40,
+      "track1_query_count": 22,
+      "track2_query_count": 18,
       "retmax_per_query": 35,
-      "documents": 535
+      "documents": 1080
     },
     {
       "name": "Europe PMC REST API",
       "endpoint": "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
       "api_documentation": "https://europepmc.org/RestfulWebService",
-      "query_count": 14,
+      "query_count": 32,
+      "track1_query_count": 14,
+      "track2_query_count": 18,
       "page_size": 25,
-      "documents_after_oa_filter": 350
+      "documents_after_oa_filter": 800
     },
     {
       "name": "ClinicalTrials.gov Data API v2",
       "endpoint": "https://clinicaltrials.gov/api/v2/studies",
       "api_documentation": "https://clinicaltrials.gov/data-api/api",
-      "condition_count": 10,
+      "condition_count": 20,
+      "track1_condition_count": 10,
+      "track2_condition_count": 10,
       "page_size": 20,
-      "documents": 199
+      "documents": 365
     }
   ],
   "counts": {
-    "local_documents": 7,
-    "deduplicated_evidence_documents": 1036,
+    "local_documents": 109,
+    "deduplicated_evidence_documents": 2127,
     "wiki_documents": 8,
-    "all_documents_with_wiki": 1044,
-    "chunks": 2063
+    "all_documents_with_wiki": 2135,
+    "chunks": 4444
   },
   "files": {
     "raw": [

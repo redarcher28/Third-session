@@ -45,10 +45,11 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
-# These queries stay within the project scope: hypertension, lipids, diabetes,
-# cardiovascular prevention, dietary patterns, sodium, and lifestyle treatment.
+# These queries stay within the project scope. Track 1 covers clinical evidence;
+# Track 2 covers consumer-facing nutrition evidence for three-high prevention
+# and diet interventions. Article links come only from API identifiers.
 # They are search expressions only; article links come from API identifiers.
-PUBMED_QUERIES = [
+TRACK1_PUBMED_QUERIES = [
     'hypertension[MeSH Terms] AND antihypertensive agents[MeSH Terms] AND (guideline[Publication Type] OR practice guideline[Publication Type]) AND hasabstract[text]',
     'hypertension[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND (systematic review[Title/Abstract] OR meta-analysis[Publication Type]) AND hasabstract[text]',
     'hypertension[MeSH Terms] AND blood pressure[Title/Abstract] AND lifestyle[Title/Abstract] AND hasabstract[text]',
@@ -73,7 +74,30 @@ PUBMED_QUERIES = [
     'life style[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND meta-analysis[Publication Type] AND hasabstract[text]',
 ]
 
-EUROPEPMC_QUERIES = [
+TRACK2_PUBMED_QUERIES = [
+    'diet therapy[MeSH Terms] AND diabetes mellitus, type 2[MeSH Terms] AND (systematic review[Title/Abstract] OR meta-analysis[Publication Type]) AND hasabstract[text]',
+    'dietary fiber[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND (systematic review[Title/Abstract] OR meta-analysis[Publication Type]) AND hasabstract[text]',
+    'whole grains[Title/Abstract] AND cardiovascular diseases[MeSH Terms] AND (systematic review[Title/Abstract] OR meta-analysis[Publication Type]) AND hasabstract[text]',
+    'sugar-sweetened beverages[Title/Abstract] AND (diabetes mellitus, type 2[MeSH Terms] OR cardiovascular diseases[MeSH Terms]) AND hasabstract[text]',
+    'ultra-processed foods[Title/Abstract] AND (cardiovascular diseases[MeSH Terms] OR diabetes mellitus, type 2[MeSH Terms]) AND hasabstract[text]',
+    'obesity[MeSH Terms] AND diet therapy[MeSH Terms] AND cardiovascular risk[Title/Abstract] AND hasabstract[text]',
+    'weight loss[MeSH Terms] AND diet[Title/Abstract] AND hypertension[MeSH Terms] AND hasabstract[text]',
+    'plant-based diet[Title/Abstract] AND cardiovascular diseases[MeSH Terms] AND hasabstract[text]',
+    'diet, vegetarian[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND hasabstract[text]',
+    'nuts[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND hasabstract[text]',
+    'legumes[Title/Abstract] AND cardiovascular diseases[MeSH Terms] AND hasabstract[text]',
+    'dietary fats[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND (guideline[Publication Type] OR meta-analysis[Publication Type]) AND hasabstract[text]',
+    'fatty acids, omega-3[MeSH Terms] AND cardiovascular diseases[MeSH Terms] AND (systematic review[Title/Abstract] OR meta-analysis[Publication Type]) AND hasabstract[text]',
+    'glycemic index[Title/Abstract] AND diabetes mellitus, type 2[MeSH Terms] AND hasabstract[text]',
+    'protein, dietary[MeSH Terms] AND diabetes mellitus, type 2[MeSH Terms] AND hasabstract[text]',
+    'low-carbohydrate diet[Title/Abstract] AND diabetes mellitus, type 2[MeSH Terms] AND (systematic review[Title/Abstract] OR randomized controlled trial[Publication Type]) AND hasabstract[text]',
+    'intermittent fasting[Title/Abstract] AND diabetes mellitus, type 2[MeSH Terms] AND hasabstract[text]',
+    'nutrition therapy[Title/Abstract] AND (guideline[Publication Type] OR practice guideline[Publication Type]) AND hasabstract[text]',
+]
+
+PUBMED_QUERIES = TRACK1_PUBMED_QUERIES + TRACK2_PUBMED_QUERIES
+
+TRACK1_EUROPEPMC_QUERIES = [
     "OPEN_ACCESS:Y AND hypertension AND (guideline OR systematic review)",
     "OPEN_ACCESS:Y AND hypertension AND cardiovascular risk",
     "OPEN_ACCESS:Y AND hypertension AND sodium",
@@ -90,7 +114,30 @@ EUROPEPMC_QUERIES = [
     "OPEN_ACCESS:Y AND lifestyle intervention AND cardiovascular",
 ]
 
-TRIAL_CONDITIONS = [
+TRACK2_EUROPEPMC_QUERIES = [
+    "OPEN_ACCESS:Y AND diet therapy AND type 2 diabetes",
+    "OPEN_ACCESS:Y AND dietary fiber AND cardiovascular",
+    "OPEN_ACCESS:Y AND whole grain AND cardiovascular",
+    "OPEN_ACCESS:Y AND sugar sweetened beverages AND diabetes",
+    "OPEN_ACCESS:Y AND ultra processed food AND cardiovascular",
+    "OPEN_ACCESS:Y AND obesity AND dietary intervention",
+    "OPEN_ACCESS:Y AND weight loss diet AND hypertension",
+    "OPEN_ACCESS:Y AND plant based diet AND cardiovascular",
+    "OPEN_ACCESS:Y AND vegetarian diet AND cardiovascular",
+    "OPEN_ACCESS:Y AND nuts AND cardiovascular",
+    "OPEN_ACCESS:Y AND legumes AND cardiovascular",
+    "OPEN_ACCESS:Y AND dietary fat AND cardiovascular",
+    "OPEN_ACCESS:Y AND omega 3 AND cardiovascular",
+    "OPEN_ACCESS:Y AND glycemic index AND diabetes",
+    "OPEN_ACCESS:Y AND dietary protein AND diabetes",
+    "OPEN_ACCESS:Y AND low carbohydrate diet AND type 2 diabetes",
+    "OPEN_ACCESS:Y AND intermittent fasting AND diabetes",
+    "OPEN_ACCESS:Y AND nutrition guideline AND cardiovascular",
+]
+
+EUROPEPMC_QUERIES = TRACK1_EUROPEPMC_QUERIES + TRACK2_EUROPEPMC_QUERIES
+
+TRACK1_TRIAL_CONDITIONS = [
     "Hypertension",
     "Hypertension Dietary Intervention",
     "Hypertension Sodium Reduction",
@@ -102,6 +149,21 @@ TRIAL_CONDITIONS = [
     "DASH Diet Blood Pressure",
     "Dietary Sodium Blood Pressure",
 ]
+
+TRACK2_TRIAL_CONDITIONS = [
+    "Diet Therapy Type 2 Diabetes",
+    "Dietary Fiber Cardiovascular",
+    "Whole Grain Cardiovascular",
+    "Sugar Sweetened Beverages Diabetes",
+    "Obesity Dietary Intervention",
+    "Weight Loss Diet Hypertension",
+    "Plant Based Diet Cardiovascular",
+    "Low Carbohydrate Diet Type 2 Diabetes",
+    "Intermittent Fasting Diabetes",
+    "Nutrition Counseling Hypertension",
+]
+
+TRIAL_CONDITIONS = TRACK1_TRIAL_CONDITIONS + TRACK2_TRIAL_CONDITIONS
 
 
 def _annotate_query(docs, source: str, queries: list[str]):
@@ -190,13 +252,48 @@ def expand_knowledge_base(
             "DASH diet",
             "dietary sodium",
             "lifestyle intervention",
+            "consumer nutrition",
+            "dietary fiber",
+            "whole grains",
+            "plant-based diet",
+            "sugar-sweetened beverages",
+            "ultra-processed foods",
+            "obesity and weight management",
+            "low-carbohydrate diet",
+            "intermittent fasting",
+            "omega-3 fatty acids",
         ],
+        "track_scopes": {
+            "track1_clinical_assistant": [
+                "hypertension",
+                "hyperlipidemia",
+                "statin",
+                "type 2 diabetes",
+                "cardiovascular prevention",
+                "clinical trials",
+                "guidelines",
+            ],
+            "track2_nutrition_assistant": [
+                "Mediterranean diet",
+                "DASH diet",
+                "dietary sodium",
+                "dietary fiber",
+                "whole grains",
+                "plant-based diet",
+                "sugar-sweetened beverages",
+                "ultra-processed foods",
+                "obesity and weight management",
+                "consumer nutrition guidance",
+            ],
+        },
         "authoritative_sources": [
             {
                 "name": "PubMed E-utilities",
                 "endpoint": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
                 "api_documentation": "https://www.ncbi.nlm.nih.gov/books/NBK25501/",
                 "query_count": len(PUBMED_QUERIES),
+                "track1_query_count": len(TRACK1_PUBMED_QUERIES),
+                "track2_query_count": len(TRACK2_PUBMED_QUERIES),
                 "retmax_per_query": pubmed_retmax,
                 "documents": len(pubmed_docs),
             },
@@ -205,6 +302,8 @@ def expand_knowledge_base(
                 "endpoint": "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
                 "api_documentation": "https://europepmc.org/RestfulWebService",
                 "query_count": len(EUROPEPMC_QUERIES),
+                "track1_query_count": len(TRACK1_EUROPEPMC_QUERIES),
+                "track2_query_count": len(TRACK2_EUROPEPMC_QUERIES),
                 "page_size": europepmc_page_size,
                 "documents_after_oa_filter": len(europepmc_docs),
             },
@@ -213,6 +312,8 @@ def expand_knowledge_base(
                 "endpoint": "https://clinicaltrials.gov/api/v2/studies",
                 "api_documentation": "https://clinicaltrials.gov/data-api/api",
                 "condition_count": len(TRIAL_CONDITIONS),
+                "track1_condition_count": len(TRACK1_TRIAL_CONDITIONS),
+                "track2_condition_count": len(TRACK2_TRIAL_CONDITIONS),
                 "page_size": trial_page_size,
                 "documents": len(trial_docs),
             },

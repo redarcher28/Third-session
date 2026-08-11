@@ -28,7 +28,38 @@ NUTRITION_STYLE = (
 )
 
 # 营养赛道检索时加权的标签
-BOOST_TAGS = ["diet", "mediterranean", "hypertension", "hyperlipidemia", "diabetes"]
+BOOST_TAGS = [
+    "diet",
+    "mediterranean",
+    "dash",
+    "hypertension",
+    "hyperlipidemia",
+    "diabetes",
+    "fiber",
+    "plant_based",
+    "sugar",
+    "ultra_processed",
+    "obesity",
+    "low_carb",
+    "omega3",
+]
+
+# 中文消费者问法 -> 英文医学检索锚点。用于离线/弱 embedding 场景下连接中文问题与英文文献摘要。
+_NUTRITION_QUERY_ALIASES = [
+    (("膳食纤维", "纤维", "全谷", "全麦", "粗粮"), "dietary fiber whole grains cardiovascular risk"),
+    (("含糖饮料", "甜饮料", "奶茶", "可乐", "饮料含糖"), "sugar-sweetened beverages diabetes cardiovascular risk"),
+    (("超加工", "加工食品", "加工零食"), "ultra-processed foods cardiovascular diabetes"),
+    (("植物性", "植物基", "素食"), "plant-based diet vegetarian diet cardiovascular"),
+    (("低碳", "低碳水", "生酮"), "low-carbohydrate diet type 2 diabetes glycemic control"),
+    (("间歇性禁食", "轻断食", "断食"), "intermittent fasting diabetes weight loss"),
+    (("坚果",), "nuts cardiovascular risk"),
+    (("豆类", "豆制品", "豆子"), "legumes cardiovascular diabetes"),
+    (("鱼油", "欧米伽", "omega", "omega-3"), "omega-3 fatty acids cardiovascular"),
+    (("地中海",), "Mediterranean diet cardiovascular risk"),
+    (("dash", "得舒"), "DASH diet blood pressure hypertension"),
+    (("限钠", "低钠", "少盐", "盐"), "dietary sodium blood pressure hypertension"),
+    (("肥胖", "减重", "减肥", "体重"), "obesity weight loss dietary intervention cardiovascular risk"),
+]
 
 # 问药量/剂量时的通俗拒答（面向普通群众的口吻）
 NUTRITION_DOSAGE_REFUSAL = (
@@ -108,7 +139,36 @@ def rewrite_nutrition_query(question: str) -> str:
         },
         {"role": "user", "content": question},
     ]
-    return llm.chat(messages, temperature=0, max_tokens=120).strip() or question
+    rewritten = llm.chat(messages, temperature=0, max_tokens=120).strip() or question
+    return append_nutrition_query_aliases(question, rewritten)
+
+
+def append_nutrition_query_aliases(question: str, rewritten: str | None = None) -> str:
+    """
+    为中文营养问题追加英文检索锚点，增强中文问题对英文医学证据的召回。
+
+    参数:
+        question: 用户原问题。
+        rewritten: LLM 改写后的查询；None 时使用原问题。
+
+    返回:
+        str: 原查询 + 命中的英文医学关键词。
+
+    作用:
+        赛道二用户多为中文口语提问，而 PubMed/Europe PMC 摘要多为英文；
+        该映射只添加主题检索词，不生成任何文献链接或证据结论。
+    """
+    base = (rewritten or question).strip()
+    lower = question.lower()
+    aliases: list[str] = []
+    seen: set[str] = set()
+    for keys, phrase in _NUTRITION_QUERY_ALIASES:
+        if any(k.lower() in lower for k in keys) and phrase not in seen:
+            aliases.append(phrase)
+            seen.add(phrase)
+    if not aliases:
+        return base
+    return f"{base} {' '.join(aliases)}"[:500]
 
 
 def detect_dosage_request(question: str) -> bool:

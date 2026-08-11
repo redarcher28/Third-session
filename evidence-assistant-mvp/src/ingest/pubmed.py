@@ -81,16 +81,21 @@ def fetch_pubmed_docs(pmids: list[str]) -> list[EvidenceDoc]:
     with httpx.Client(timeout=90) as client:
         for i in range(0, len(pmids), 50):
             batch = pmids[i : i + 50]
-            r = client.get(
-                f"{EUTILS}/efetch.fcgi",
-                params=_params(
-                    db="pubmed",
-                    id=",".join(batch),
-                    retmode="xml",
-                ),
-            )
-            r.raise_for_status()
-            root = ET.fromstring(r.text)
+            try:
+                r = client.get(
+                    f"{EUTILS}/efetch.fcgi",
+                    params=_params(
+                        db="pubmed",
+                        id=",".join(batch),
+                        retmode="xml",
+                    ),
+                )
+                r.raise_for_status()
+                root = ET.fromstring(r.text)
+            except Exception as e:
+                # 单个 efetch 批次失败时跳过该批，避免整批 PubMed 文献被丢弃。
+                logger.warning("PubMed efetch batch failed ids=%s error=%s", ",".join(batch[:3]), e)
+                continue
             for article in root.findall(".//PubmedArticle"):
                 pmid = _text(article, ".//PMID")
                 title = _text(article, ".//ArticleTitle")
@@ -142,6 +147,14 @@ def _tags_from_text(text: str) -> list[str]:
         "cardiovascular": ["cardiovascular", "coronary", "心血管", "冠心病"],
         "diet": ["diet", "dietary", "nutrition", "饮食", "营养", "sodium", "钠"],
         "mediterranean": ["mediterranean", "地中海"],
+        "dash": ["dash"],
+        "fiber": ["fiber", "fibre", "whole grain", "whole-grain", "膳食纤维", "全谷物"],
+        "plant_based": ["plant-based", "plant based", "vegetarian", "植物性", "素食"],
+        "sugar": ["sugar-sweetened", "sugary drink", "added sugar", "含糖"],
+        "ultra_processed": ["ultra-processed", "ultraprocessed", "超加工"],
+        "obesity": ["obesity", "overweight", "weight loss", "体重", "肥胖"],
+        "low_carb": ["low-carbohydrate", "low carbohydrate", "低碳"],
+        "omega3": ["omega-3", "omega 3"],
         "guideline": ["guideline", "指南", "recommendation"],
     }
     lower = text.lower()

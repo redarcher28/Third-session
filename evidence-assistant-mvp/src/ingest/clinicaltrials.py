@@ -26,6 +26,13 @@ def _tags(text: str) -> list[str]:
         "diabetes": ["diabetes"],
         "cardiovascular": ["cardiovascular", "coronary"],
         "diet": ["diet", "nutrition", "sodium"],
+        "fiber": ["fiber", "whole grain"],
+        "plant_based": ["plant-based", "plant based", "vegetarian"],
+        "sugar": ["sugar-sweetened", "sugary drink", "added sugar"],
+        "ultra_processed": ["ultra-processed", "ultraprocessed"],
+        "obesity": ["obesity", "overweight", "weight loss"],
+        "low_carb": ["low-carbohydrate", "low carbohydrate"],
+        "omega3": ["omega-3", "omega 3"],
     }
     lower = text.lower()
     return [t for t, keys in mapping.items() if any(k in lower for k in keys)]
