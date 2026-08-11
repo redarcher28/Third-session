@@ -43,19 +43,27 @@ def _plain_text_pdf(pdf_path: Path) -> str:
 
 
 def pdf_to_markdown(pdf_path: Path) -> str:
-    """PDF 转 Markdown：有文字层用 pymupdf4llm（失败退回纯文本），扫描件用 RapidOCR。"""
-    try:
-        import pymupdf4llm
+    """
+    PDF 转 Markdown。
 
-        md = pymupdf4llm.to_markdown(str(pdf_path))
-        if len(md.strip()) > _MIN_TEXT_CHARS:
-            return md
-    except Exception as e:
-        logger.warning("pymupdf4llm 失败（%s），退回 pymupdf 纯文本提取", e)
-    md = _plain_text_pdf(pdf_path)
-    if len(md.strip()) > _MIN_TEXT_CHARS:
-        return md
-    logger.info("扫描件（无文字层），改用 OCR 识别 %s", pdf_path)
+    注意：pymupdf4llm 的内置 OCR 在 Windows 上会把中文输出成乱码（编码 bug），
+    因此扫描件一律直接走 RapidOCR 管线，不再交给 pymupdf4llm。
+    """
+    import pymupdf
+
+    doc = pymupdf.open(str(pdf_path))
+    sample = "".join(doc[i].get_text() for i in range(min(3, len(doc))))
+    if len(sample.strip()) > _MIN_TEXT_CHARS:  # 有文字层
+        try:
+            import pymupdf4llm
+
+            md = pymupdf4llm.to_markdown(str(pdf_path))
+            if len(md.strip()) > _MIN_TEXT_CHARS:
+                return md
+        except Exception as e:
+            logger.warning("pymupdf4llm 失败（%s），退回 pymupdf 纯文本提取", e)
+        return _plain_text_pdf(pdf_path)
+    logger.info("扫描件（无文字层），改用 RapidOCR 识别 %s", pdf_path)
     return _ocr_pdf(pdf_path)
 
 
