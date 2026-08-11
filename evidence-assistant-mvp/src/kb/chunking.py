@@ -82,17 +82,13 @@ def docs_to_chunks(docs: Iterable[EvidenceDoc], max_chars: int = 1200) -> list[C
 
 
 # ---------------------------------------------------------------------------
-# 切分质量与溯源校验
+# 【待完善】切分质量与溯源校验（只定义签名与备注，不写函数体）
 # ---------------------------------------------------------------------------
 
 
 def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
     """
-    检查每个切块是否具备可追溯字段。
-
-    创新点：
-        - 溯源三元组（doc_id / title / url）全量校验：缺一项即报告具体 chunk_id；
-        - 追加空正文检查与总量统计，便于在 build 流程里做门槛断言。
+    【待完善】检查每个切块是否具备可追溯字段。
 
     参数:
         chunks: 切分后的块列表。
@@ -100,79 +96,105 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
     返回:
         dict: 例如 {
             "ok": bool,
-            "total": int,
             "missing_doc_id": int,
             "missing_title": int,
             "missing_url": int,
-            "missing_text": int,
             "bad_ids": list[str],
         }
 
     作用:
         防止「有回答但点不开/对不上文献」的演示事故。
     """
-    missing_doc_id = [c.chunk_id for c in chunks if not (c.doc_id or "").strip()]
-    missing_title = [c.chunk_id for c in chunks if not (c.title or "").strip()]
-    missing_url = [c.chunk_id for c in chunks if not (c.url or "").strip()]
-    missing_text = [c.chunk_id for c in chunks if not (c.text or "").strip()]
-    bad_ids = [
-        c.chunk_id for c in chunks
-        if not (c.chunk_id or "").strip() or "#" not in c.chunk_id
-    ]
-    report = {
-        "ok": not (missing_doc_id or missing_title or missing_text or bad_ids),
+    missing_doc_id: list[str] = []
+    missing_title: list[str] = []
+    missing_text: list[str] = []
+    missing_url: list[str] = []
+    duplicate_ids: list[str] = []
+    seen: set[str] = set()
+
+    for chunk in chunks:
+        cid = chunk.chunk_id or "<empty>"
+        if cid in seen:
+            duplicate_ids.append(cid)
+        seen.add(cid)
+        if not chunk.doc_id.strip():
+            missing_doc_id.append(cid)
+        if not chunk.title.strip():
+            missing_title.append(cid)
+        if not chunk.text.strip():
+            missing_text.append(cid)
+        # local/wiki 样例允许没有外部 URL；其他公开源必须可追溯。
+        if chunk.source not in ("local", "wiki") and not chunk.url.strip():
+            missing_url.append(cid)
+
+    return {
+        "ok": not (missing_doc_id or missing_title or missing_text or missing_url or duplicate_ids),
         "total": len(chunks),
         "missing_doc_id": len(missing_doc_id),
         "missing_title": len(missing_title),
-        "missing_url": len(missing_url),
         "missing_text": len(missing_text),
-        "bad_ids": bad_ids[:10],
-        "sample_missing_url": missing_url[:5],
+        "missing_url": len(missing_url),
+        "duplicate_ids": len(duplicate_ids),
+        "bad_ids": sorted(set(missing_doc_id + missing_title + missing_text + missing_url + duplicate_ids))[:100],
     }
-    return report
 
 
 def merge_tiny_chunks(chunks: list[Chunk], min_chars: int = 120) -> list[Chunk]:
     """
-    合并过短切块，减少碎片化检索命中。
-
-    创新点：
-        - 与「相邻且同源（同 doc_id）」块合并，绝不跨文档拼接，保证溯源不串；
-        - 合并后统一重写 chunk_id / chunk_index，保持「doc_id#cN」溯源规范；
-        - 贪心向后合并：当前块过短或上一块过短且同源时即合并，一次扫描完成。
+    【待完善】合并过短切块，减少碎片化检索命中。
 
     参数:
         chunks: 原始切块列表。
         min_chars: 低于该长度的块尝试与相邻块合并。
 
     返回:
-        list[Chunk]: 合并后的切块列表（已重写 chunk_id / chunk_index）。
+        list[Chunk]: 合并后的切块列表（需重写 chunk_id / chunk_index）。
 
     作用:
         提升检索片段可读性，降低无意义短句干扰。
     """
     if not chunks:
         return []
+
+    by_doc: dict[str, list[Chunk]] = {}
+    doc_order: list[str] = []
+    for chunk in chunks:
+        if chunk.doc_id not in by_doc:
+            by_doc[chunk.doc_id] = []
+            doc_order.append(chunk.doc_id)
+        by_doc[chunk.doc_id].append(chunk)
+
     merged: list[Chunk] = []
-    for c in chunks:
-        if (
-            merged
-            and merged[-1].doc_id == c.doc_id
-            and (len(merged[-1].text) < min_chars or len(c.text) < min_chars)
-        ):
-            merged[-1].text = f"{merged[-1].text} {c.text}".strip()
-            # 标题/年份等以更完整者为准
-            if not merged[-1].url and c.url:
-                merged[-1].url = c.url
-            if not merged[-1].year and c.year:
-                merged[-1].year = c.year
-        else:
-            merged.append(c)
-    # 按「每文档独立序号」重编号，保证 chunk_id 与模型语义一致且跨构建稳定
-    counters: dict[str, int] = {}
-    for c in merged:
-        i = counters.get(c.doc_id, 0)
-        counters[c.doc_id] = i + 1
-        c.chunk_index = i
-        c.chunk_id = f"{c.doc_id}#c{i}"
+    for doc_id in doc_order:
+        group = sorted(by_doc[doc_id], key=lambda c: c.chunk_index)
+        pending: Chunk | None = None
+        doc_chunks: list[Chunk] = []
+        for chunk in group:
+            if pending is None:
+                pending = chunk
+                continue
+            if len(pending.text.strip()) < min_chars:
+                pending = pending.model_copy(
+                    update={"text": f"{pending.text.strip()}\n\n{chunk.text.strip()}".strip()}
+                )
+            else:
+                doc_chunks.append(pending)
+                pending = chunk
+        if pending is not None:
+            if doc_chunks and len(pending.text.strip()) < min_chars:
+                prev = doc_chunks.pop()
+                pending = prev.model_copy(
+                    update={"text": f"{prev.text.strip()}\n\n{pending.text.strip()}".strip()}
+                )
+            doc_chunks.append(pending)
+
+        for new_index, chunk in enumerate(doc_chunks):
+            merged.append(
+                chunk.model_copy(
+                    update={
+                        "chunk_index": new_index,
+                        "chunk_id": f"{chunk.doc_id}#c{new_index}",
+                    }
+                )
+            )
     return merged

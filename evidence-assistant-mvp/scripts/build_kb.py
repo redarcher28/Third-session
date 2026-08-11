@@ -17,7 +17,7 @@ from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
 from src.kb.chunking import docs_to_chunks, merge_tiny_chunks, validate_chunk_traceability
-from src.kb.store import EvidenceStore
+from src.kb.store import EvidenceStore, export_store_stats
 from src.kb.wiki import generate_wiki_pages
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -38,13 +38,11 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     epmc_docs = [] if skip_live else ingest_europepmc(page_size=10)
     if epmc_docs:
         save_docs(epmc_docs, settings.raw_path / "europepmc.json")
-    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs)
-    all_docs = dedupe_by_doi_or_title(all_docs)
+    all_docs = dedupe_by_doi_or_title(merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs))
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)
-    report = export_ingest_report(all_docs, settings.processed_path / "ingest_report.md")
+    export_ingest_report(all_docs, settings.processed_path / "ingest_report.md")
     logger.info("Merged %d documents -> %s", len(all_docs), out)
-    logger.info("Ingest report -> %s", report)
     return out
 
 
@@ -61,18 +59,18 @@ def build_kb(*, skip_live: bool = False, skip_ingest: bool = False, reset: bool 
 
     wiki_docs = generate_wiki_pages(docs)
     save_docs(wiki_docs, settings.processed_path / "wiki_docs.json")
-    all_docs = merge_docs(docs, wiki_docs)
+    all_docs = dedupe_by_doi_or_title(merge_docs(docs, wiki_docs))
     save_docs(all_docs, settings.processed_path / "documents_with_wiki.json")
 
-    chunks = docs_to_chunks(all_docs)
-    chunks = merge_tiny_chunks(chunks)
-    trace = validate_chunk_traceability(chunks)
-    if not trace["ok"]:
-        logger.warning("Chunk traceability issues: %s", trace)
+    chunks = merge_tiny_chunks(docs_to_chunks(all_docs))
+    trace_report = validate_chunk_traceability(chunks)
+    if not trace_report.get("ok"):
+        logger.warning("Chunk traceability issues: %s", trace_report)
     store = EvidenceStore()
     if reset:
         store.reset()
     n = store.upsert_chunks(chunks)
+    export_store_stats(settings.processed_path / "store_stats.md")
     logger.info("Knowledge base ready: %d chunks (store count=%d)", n, store.count())
 
 
