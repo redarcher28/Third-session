@@ -146,7 +146,21 @@ NUTRITION_PROFILE = TrackPromptProfile(
     ),
     evidence_focus=("diet", "lifestyle", "mediterranean", "hypertension", "diabetes"),
     prefer_levels=(),
-    boost_tags=("diet", "mediterranean", "hypertension", "hyperlipidemia", "diabetes"),
+    boost_tags=(
+        "diet",
+        "mediterranean",
+        "dash",
+        "hypertension",
+        "hyperlipidemia",
+        "diabetes",
+        "fiber",
+        "plant_based",
+        "sugar",
+        "ultra_processed",
+        "obesity",
+        "low_carb",
+        "omega3",
+    ),
     query_prompt=NUTRITION_QUERY_PROMPT,
     persona=NUTRITION_PERSONA,
     style=NUTRITION_STYLE,
@@ -283,4 +297,3 @@ def public_track_configs() -> dict:
             for profile in TRACK_PROFILES.values()
         ],
     }
-

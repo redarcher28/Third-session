@@ -199,6 +199,34 @@ def dedupe_by_doi_or_title(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     return list(seen.values())
 
 
+# 正文关键词 → 证据等级（高证据优先：meta > guideline > rct > observational）
+_TEXT_LEVEL_KEYS: dict[str, list[str]] = {
+    "meta": ["meta-analysis", "meta analysis", "systematic review", "umbrella review", "荟萃", "系统综述", "伞形综述"],
+    "guideline": ["guideline", "指南", "recommendation", "consensus"],
+    "rct": ["randomized", "randomised", "randomized controlled", "随机对照", "double-blind", "双盲"],
+    "observational": ["cohort", "observational", "case-control", "队列", "横断面", "观察性"],
+}
+
+
+def enrich_levels_from_text(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
+    """
+    对 evidence_level=other 的文档，用标题+正文关键词补判证据等级（原地更新）。
+
+    创新点：标题启发式对真实文献命中率低（500 合集中大量 Journal Article 标题
+    不含类型词），正文摘要几乎必然出现 randomized/cohort/meta-analysis 等词，
+    用正文补判可把 other 占比显著压低，让检索加权真正生效。
+    """
+    for d in docs:
+        if d.evidence_level != "other":
+            continue
+        blob = f"{d.title} {d.text}"[:3000].lower()
+        for level, keys in _TEXT_LEVEL_KEYS.items():
+            if any(k in blob for k in keys):
+                d.evidence_level = level  # type: ignore[assignment]
+                break
+    return docs
+
+
 def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
     """
     导出采集质量报告（来源分布、年份分布、缺摘要比例等）。

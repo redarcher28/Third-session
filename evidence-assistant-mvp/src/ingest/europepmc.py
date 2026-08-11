@@ -27,6 +27,14 @@ def _tags(text: str) -> list[str]:
         "cardiovascular": ["cardiovascular", "心血管"],
         "diet": ["diet", "nutrition", "sodium", "饮食"],
         "mediterranean": ["mediterranean", "地中海"],
+        "dash": ["dash"],
+        "fiber": ["fiber", "fibre", "whole grain", "whole-grain", "膳食纤维", "全谷物"],
+        "plant_based": ["plant-based", "plant based", "vegetarian", "植物性", "素食"],
+        "sugar": ["sugar-sweetened", "sugary drink", "added sugar", "含糖"],
+        "ultra_processed": ["ultra-processed", "ultraprocessed", "超加工"],
+        "obesity": ["obesity", "overweight", "weight loss", "体重", "肥胖"],
+        "low_carb": ["low-carbohydrate", "low carbohydrate", "低碳"],
+        "omega3": ["omega-3", "omega 3"],
     }
     lower = text.lower()
     return [t for t, keys in mapping.items() if any(k.lower() in lower for k in keys)]
@@ -117,14 +125,15 @@ def ingest_europepmc(
     """
     queries = queries or DEFAULT_QUERIES
     out: list[EvidenceDoc] = []
-    try:
-        for q in queries:
+    for q in queries:
+        try:
             docs = filter_open_access_only(search_europepmc(q, page_size=page_size))
             logger.info("EuropePMC query=%r -> %d (after OA filter)", q, len(docs))
             out.extend(docs)
-    except Exception as e:
-        logger.warning("EuropePMC fetch failed: %s", e)
-        return []
+        except Exception as e:
+            # 单个查询失败时保留其他查询结果，适合长批量营养主题采集。
+            logger.warning("EuropePMC query failed query=%r error=%s", q, e)
+            continue
     return out
 
 

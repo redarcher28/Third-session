@@ -43,7 +43,11 @@ DOMAIN_HINTS = {
     "高血压", "血压", "血脂", "胆固醇", "糖尿病", "血糖", "心血管", "地中海",
     "限钠", "钠", "盐", "饮食", "营养", "他汀", "dash", "hypertension",
     "lipid", "cholesterol", "diabetes", "diet", "mediterranean", "sodium",
-    "statin", "blood pressure", "cardiovascular",
+    "statin", "blood pressure", "cardiovascular", "膳食纤维", "全谷物", "全谷",
+    "含糖饮料", "甜饮料", "超加工", "植物性", "植物基", "低碳", "低碳水",
+    "间歇性禁食", "轻断食", "肥胖", "减重", "体重", "坚果", "豆类", "鱼油",
+    "omega", "whole grain", "dietary fiber", "sugar-sweetened", "ultra-processed",
+    "plant-based", "low-carbohydrate", "intermittent fasting", "obesity",
 }
 
 # 明显越界/伪科学问题关键词：直接拒答（演示假引用与拒答能力）
