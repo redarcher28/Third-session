@@ -10,37 +10,71 @@
   <body>
     <main class="settings-shell">
       <header class="settings-header">
-        <a class="back-link" id="home-link" href="/">← 返回证据台</a>
-        <span class="eyebrow">EVIDENCE DESK / CONNECTION</span>
-        <h1>模型连接设置</h1>
-        <p>
-          在这里切换 API 地址、令牌和模型名；保存后对后端 RAG 调用立即生效，
-          不需要再编辑项目 <code>.env</code>。
-        </p>
+        <div class="header-line">
+          <a class="back-link" id="home-link" href="/">← 返回证据台</a>
+          <span class="eyebrow">EVIDENCE DESK / CONNECTION</span>
+        </div>
+        <div class="title-lockup">
+          <span class="signal-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <div>
+            <h1>连接你的证据模型</h1>
+            <p>
+              选一个服务商预设，填入令牌即可切换。保存后对后端 RAG 立即生效，
+              不需要再编辑项目 <code>.env</code>。
+            </p>
+          </div>
+        </div>
       </header>
 
       <section class="status-card" aria-live="polite">
-        <div>
-          <span class="status-label">当前连接</span>
-          <strong id="status-summary">读取中…</strong>
+        <div class="status-main">
+          <span class="status-orb" aria-hidden="true"></span>
+          <div>
+            <span class="status-label">当前连接</span>
+            <strong id="status-summary">读取中…</strong>
+            <small>RAG 检索与引用链路保持不变</small>
+          </div>
         </div>
         <span id="status-source" class="status-pill">—</span>
       </section>
 
       <form id="connection-form" class="settings-card">
+        <div class="card-heading">
+          <span class="section-kicker">01 / PROVIDER</span>
+          <h2>先选服务商</h2>
+          <p>预设会填好协议、地址和模型名；你只需要检查并补充自己的 API Key。</p>
+        </div>
+
+        <label class="field provider-field">
+          <span>服务商预设</span>
+          <select id="provider-preset" name="provider_preset">
+            <option value="custom">自定义兼容接口</option>
+            <option value="byeapi-luna">ByeAPI · GPT-5.6 Luna</option>
+            <option value="deepseek-flash">DeepSeek · V4 Flash（推荐）</option>
+            <option value="deepseek-pro">DeepSeek · V4 Pro</option>
+          </select>
+          <small id="preset-note">可手动填写任何 OpenAI-compatible 服务。</small>
+        </label>
+
+        <div class="section-rule" aria-hidden="true"></div>
+        <div class="card-heading compact-heading">
+          <span class="section-kicker">02 / CONNECTION</span>
+          <h2>连接信息</h2>
+        </div>
+
         <div class="field-grid">
           <label class="field">
-            <span>API 格式</span>
+            <span>接口协议</span>
             <select id="api-format" name="api_format">
               <option value="responses">OpenAI Responses</option>
               <option value="openai">OpenAI Chat Completions</option>
               <option value="anthropic">Anthropic Messages</option>
             </select>
-            <small>ByeAPI / Codex 配置请选择 Responses。</small>
+            <small id="api-format-hint">ByeAPI / Codex 配置请选择 Responses。</small>
           </label>
 
           <label class="field field-wide">
-            <span>API Base URL</span>
+            <span>服务地址</span>
             <input
               id="base-url"
               name="base_url"
@@ -49,11 +83,11 @@
               autocomplete="url"
               placeholder="https://api.byeapi.top"
             />
-            <small>填服务商根地址或带 <code>/v1</code> 的地址，系统会自动拼接接口路径。</small>
+            <small>DeepSeek 使用官方根地址；其他服务可填根地址或带 <code>/v1</code> 的地址。</small>
           </label>
 
           <label class="field">
-            <span>模型名</span>
+            <span>模型 ID</span>
             <input
               id="model"
               name="model"
@@ -63,6 +97,7 @@
               autocomplete="off"
               placeholder="gpt-5.6-luna"
             />
+            <small>以服务商模型列表中的 ID 为准。</small>
           </label>
 
           <label class="field field-wide">
@@ -80,12 +115,15 @@
         </div>
 
         <div class="fixed-policy" role="note">
-          <strong>赛道策略已固定</strong>
+          <span class="policy-check" aria-hidden="true">✓</span>
+          <div>
+            <strong>赛道策略已固定</strong>
           <p>
             赛道 Prompt、检索数量、引用规则和回答采样策略由后端统一控制；这里不开放
             reasoning effort、temperature、top_p、max tokens 等细调，保证赛道一/二的
             演示口径和评测结果一致。
           </p>
+          </div>
         </div>
 
         <label class="checkbox-field">
@@ -94,7 +132,7 @@
         </label>
 
         <div class="form-actions">
-          <button class="button button-primary" type="submit">保存并立即生效</button>
+          <button class="button button-primary" type="submit">保存连接</button>
           <button class="button button-secondary" id="test-button" type="button">测试模型列表</button>
           <button class="button button-quiet" id="reset-button" type="button">恢复 .env 配置</button>
         </div>

@@ -1,9 +1,40 @@
 (() => {
   "use strict";
 
+  const PRESETS = Object.freeze({
+    custom: {
+      label: "自定义兼容接口",
+      note: "可手动填写任何 OpenAI-compatible 服务。",
+    },
+    "byeapi-luna": {
+      label: "ByeAPI · GPT-5.6 Luna",
+      apiFormat: "responses",
+      baseUrl: "https://api.byeapi.top",
+      model: "gpt-5.6-luna",
+      note: "Responses 接口；保留当前 Luna 配置，不开放额外推理强度调节。",
+    },
+    "deepseek-flash": {
+      label: "DeepSeek · V4 Flash（推荐）",
+      apiFormat: "openai",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+      note: "OpenAI-compatible；默认使用本地向量，避免向 DeepSeek 请求 Embedding。",
+    },
+    "deepseek-pro": {
+      label: "DeepSeek · V4 Pro",
+      apiFormat: "openai",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-v4-pro",
+      note: "OpenAI-compatible；适合更复杂的证据综合，但响应时间和消耗可能更高。",
+    },
+  });
+
   const els = {
     form: document.querySelector("#connection-form"),
+    providerPreset: document.querySelector("#provider-preset"),
+    presetNote: document.querySelector("#preset-note"),
     apiFormat: document.querySelector("#api-format"),
+    apiFormatHint: document.querySelector("#api-format-hint"),
     baseUrl: document.querySelector("#base-url"),
     model: document.querySelector("#model"),
     apiKey: document.querySelector("#api-key"),
@@ -22,6 +53,44 @@
     els.formMessage.className = `form-message form-message-${kind}`;
   }
 
+  function normalizeBaseUrl(value) {
+    return String(value || "").trim().replace(/\/+$/, "");
+  }
+
+  function identifyPreset(status) {
+    const baseUrl = normalizeBaseUrl(status.base_url);
+    return Object.entries(PRESETS).find(([key, preset]) => (
+      key !== "custom" &&
+      preset.apiFormat === status.api_format &&
+      normalizeBaseUrl(preset.baseUrl) === baseUrl &&
+      preset.model === status.model
+    ))?.[0] || "custom";
+  }
+
+  function renderPresetNote(key) {
+    const preset = PRESETS[key] || PRESETS.custom;
+    els.presetNote.textContent = preset.note;
+    els.apiFormatHint.textContent = preset.apiFormat === "openai"
+      ? "DeepSeek 使用 OpenAI Chat Completions 兼容协议。"
+      : preset.apiFormat === "responses"
+        ? "ByeAPI / Codex 配置请选择 Responses。"
+        : "按服务商提供的 Messages 协议填写。";
+  }
+
+  function applyPreset(key, announce = true) {
+    const preset = PRESETS[key] || PRESETS.custom;
+    els.providerPreset.value = key;
+    renderPresetNote(key);
+    if (key === "custom") {
+      if (announce) setMessage("已切换到自定义接口，可手动填写连接信息。", "info");
+      return;
+    }
+    els.apiFormat.value = preset.apiFormat;
+    els.baseUrl.value = preset.baseUrl;
+    els.model.value = preset.model;
+    if (announce) setMessage(`已套用${preset.label}预设，请填写或确认 API Key。`, "info");
+  }
+
   async function request(path, options = {}) {
     const response = await fetch(path, {
       ...options,
@@ -38,6 +107,7 @@
     els.apiFormat.value = status.api_format || "responses";
     els.baseUrl.value = status.base_url || "";
     els.model.value = status.model || "";
+    applyPreset(identifyPreset(status), false);
     els.statusSummary.textContent = status.api_key_configured
       ? `${status.model} · ${status.api_key_hint}`
       : `${status.model} · 未配置令牌`;
@@ -113,6 +183,9 @@
   }
 
   els.form.addEventListener("submit", saveSettings);
+  els.providerPreset.addEventListener("change", () => {
+    applyPreset(els.providerPreset.value);
+  });
   els.testButton.addEventListener("click", testConnection);
   els.resetButton.addEventListener("click", resetSettings);
   loadStatus();
