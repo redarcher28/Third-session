@@ -16,6 +16,9 @@ Responses/Anthropic 模式默认使用本地哈希向量 + BM25，不需要第�
 from __future__ import annotations
 
 import logging
+import json
+from collections.abc import Iterator
+from typing import Any
 
 import httpx
 from openai import OpenAI
@@ -143,6 +146,50 @@ class LLMClient:
         )
         return (resp.choices[0].message.content or "").strip()
 
+    def stream_chat(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.2,
+        max_tokens: int = 2000,
+    ) -> Iterator[str]:
+        """以文本增量形式调用模型，供 Open WebUI SSE 透传。"""
+
+        if self._offline:
+            answer = self._offline_chat(messages)
+            if answer:
+                yield answer
+            return
+        if self.api_format == "responses":
+            yield from self._stream_responses(messages, max_tokens=max_tokens)
+            return
+        if self.api_format == "anthropic":
+            yield from self._stream_anthropic(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return
+        if self._client is None:  # pragma: no cover - 防御性保护
+            raise RuntimeError("OpenAI client is not initialized")
+
+        stream = self._client.chat.completions.create(
+            model=self.model,
+            messages=messages,  # type: ignore[arg-type]
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
+        for event in stream:
+            choices = event.get("choices") if isinstance(event, dict) else getattr(event, "choices", None)
+            if not choices:
+                continue
+            choice = choices[0]
+            delta = choice.get("delta") if isinstance(choice, dict) else getattr(choice, "delta", None)
+            text = delta.get("content") if isinstance(delta, dict) else getattr(delta, "content", None)
+            if text:
+                yield str(text)
+
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
     def embed(self, texts: list[str]) -> list[list[float]]:
         """
@@ -216,6 +263,152 @@ class LLMClient:
         if not answer:
             raise RuntimeError("Responses API 返回中没有可读文本")
         return answer
+
+    @staticmethod
+    def _iter_sse_data(lines: Iterator[str]) -> Iterator[str]:
+        """把上游 SSE 行合并为 data payload，兼容多行 data 字段。"""
+
+        data_lines: list[str] = []
+        for line in lines:
+            line = line.rstrip("\r")
+            if not line:
+                if data_lines:
+                    yield "\n".join(data_lines)
+                    data_lines = []
+                continue
+            if line.startswith(":"):
+                continue
+            if line.startswith("data:"):
+                data_lines.append(line[5:].lstrip())
+        if data_lines:
+            yield "\n".join(data_lines)
+
+    @staticmethod
+    def _json_stream_text(payload: dict[str, Any]) -> str:
+        """从 Responses/兼容网关事件中提取一段可展示文本。"""
+
+        event_type = str(payload.get("type") or "")
+        if event_type in {"response.output_text.delta", "response.refusal.delta"}:
+            return str(payload.get("delta") or "")
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            choice = choices[0]
+            if isinstance(choice, dict):
+                delta = choice.get("delta") or {}
+                if isinstance(delta, dict):
+                    return str(delta.get("content") or "")
+        # 少数兼容网关会把增量放在 output_text 字段中。
+        return str(payload.get("output_text") or "") if payload.get("output_text") else ""
+
+    def _stream_responses(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        max_tokens: int,
+    ) -> Iterator[str]:
+        """消费 Responses API 的 response.output_text.delta 事件。"""
+
+        payload: dict[str, object] = {
+            "model": self.model,
+            "input": messages,
+            "max_output_tokens": max_tokens,
+            "stream": True,
+        }
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+
+        with httpx.stream(
+            "POST",
+            self._responses_url(),
+            headers={
+                "Authorization": f"Bearer {self._api_key}",
+                "content-type": "application/json",
+                "accept": "text/event-stream",
+            },
+            json=payload,
+            timeout=120.0,
+        ) as response:
+            response.raise_for_status()
+            for raw in self._iter_sse_data(response.iter_lines()):
+                if raw.strip() == "[DONE]":
+                    break
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                text = self._json_stream_text(event)
+                if text:
+                    yield text
+
+    def _stream_anthropic(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Iterator[str]:
+        """消费 Anthropic Messages 的 content_block_delta 事件。"""
+
+        system_parts = [
+            message["content"]
+            for message in messages
+            if message.get("role") == "system" and message.get("content")
+        ]
+        conversation = [
+            {
+                "role": message.get("role", "user"),
+                "content": message.get("content", ""),
+            }
+            for message in messages
+            if message.get("role") in {"user", "assistant"}
+        ]
+        if not conversation:
+            conversation = [{"role": "user", "content": ""}]
+
+        payload: dict[str, object] = {
+            "model": self.model,
+            "messages": conversation,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if system_parts:
+            payload["system"] = "\n\n".join(system_parts)
+
+        with httpx.stream(
+            "POST",
+            self._anthropic_messages_url(),
+            headers={
+                "x-api-key": self._api_key,
+                "Authorization": f"Bearer {self._api_key}",
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json",
+                "accept": "text/event-stream",
+            },
+            json=payload,
+            timeout=120.0,
+        ) as response:
+            response.raise_for_status()
+            for raw in self._iter_sse_data(response.iter_lines()):
+                if raw.strip() == "[DONE]":
+                    break
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                text = ""
+                if event.get("type") == "content_block_delta":
+                    delta = event.get("delta") or {}
+                    if isinstance(delta, dict) and delta.get("type") == "text_delta":
+                        text = str(delta.get("text") or "")
+                elif event.get("type") == "completion":
+                    text = str(event.get("completion") or "")
+                if text:
+                    yield text
 
     def _responses_url(self) -> str:
         """根据 provider root/base URL 生成 Responses endpoint。"""

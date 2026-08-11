@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from collections import Counter
 from time import perf_counter
 from typing import Any
@@ -255,6 +256,7 @@ def ask(
     top_k: int = 5,
     use_live_tools: bool = False,
     retriever: HybridRetriever | None = None,
+    stream_callback: Callable[[str], None] | None = None,
 ) -> AskResponse:
     """
     赛道一/二统一问答入口。
@@ -265,6 +267,7 @@ def ask(
         top_k: 最终证据条数。
         use_live_tools: 是否启用在线补检索。
         retriever: 可选外部注入的检索器（评测复用同一实例）。
+        stream_callback: 可选的模型文本增量回调，仅供 Open WebUI SSE 使用。
 
     返回:
         AskResponse: 含回答、引用、证据面板、拒答标记、校验结果。
@@ -376,19 +379,33 @@ def ask(
         system_persona=persona,
         answer_style=style,
         track=track,
+        stream_callback=stream_callback,
     )
     timings_ms["generation_ms"] = round((perf_counter() - generation_started) * 1000, 1)
     validation_started = perf_counter()
     check = verify_citations(answer, contexts)
     if not refused:
-        answer = strip_invalid_claims(answer, check)
+        validated_answer = strip_invalid_claims(answer, check)
+        if stream_callback and validated_answer != answer:
+            if validated_answer.startswith(answer):
+                stream_callback(validated_answer[len(answer) :])
+            else:
+                stream_callback("\n\n" + validated_answer)
+        answer = validated_answer
     # 营养赛道后处理：术语通俗化 + 药量防御警示（面向普通群众的产品边界）
     if not refused and track == "nutrition":
-        answer = simplify_medical_terms(answer)
+        # 术语替换需要看到完整回答；流式分支保留模型已经按赛道 Prompt
+        # 生成的文本，避免事后替换造成前端已显示内容无法回退。
+        if stream_callback is None:
+            answer = simplify_medical_terms(answer)
         if flag_dosage_in_answer(answer):
-            answer = answer.rstrip() + (
+            dosage_warning = (
                 "\n\n> ⚠️ 如涉及具体药量/剂量，请以医生或药师的意见为准，切勿自行调整。"
             )
+            if dosage_warning not in answer:
+                answer = answer.rstrip() + dosage_warning
+                if stream_callback:
+                    stream_callback(dosage_warning)
     timings_ms["citation_validation_ms"] = round(
         (perf_counter() - validation_started) * 1000, 1
     )

@@ -262,12 +262,61 @@ class RagContractTests(unittest.TestCase):
         )
         self.assertIn("[1]", answer_text)
         self.assertNotIn("### 证据来源", answer_text)
-        mocked_ask.assert_called_once_with(
-            "高血压为什么有时需要长期管理？",
+        mocked_ask.assert_called_once()
+        call_args, call_kwargs = mocked_ask.call_args
+        self.assertEqual(call_args, ("高血压为什么有时需要长期管理？",))
+        self.assertEqual(call_kwargs["track"], "clinical")
+        self.assertEqual(call_kwargs["top_k"], 5)
+        self.assertFalse(call_kwargs["use_live_tools"])
+        self.assertTrue(callable(call_kwargs["stream_callback"]))
+
+    def test_openwebui_stream_forwards_model_deltas_before_result(self) -> None:
+        citation = _citation()
+        result = AskResponse(
+            answer="第一段第二段",
+            citations=[citation],
+            contexts=[citation],
             track="clinical",
-            top_k=5,
-            use_live_tools=False,
+            prompt_version="test-version",
+            retrieval={"retrieved_count": 1},
+            citation_check={"ok": True, "used_brackets": [1]},
         )
+
+        def fake_ask(*_args: object, **kwargs: object) -> AskResponse:
+            callback = kwargs["stream_callback"]
+            callback("第一段")  # type: ignore[operator]
+            callback("第二段")  # type: ignore[operator]
+            return result
+
+        with patch("src.app.openwebui.ask", side_effect=fake_ask):
+            frames = list(
+                _stream_rag_answer(
+                    response_id="chatcmpl-stream-order",
+                    created=1,
+                    model="evidence-clinical",
+                    question="高血压为什么有时需要长期管理？",
+                    track="clinical",
+                )
+            )
+
+        payloads = [
+            json.loads(frame[len("data: ") :].strip())
+            for frame in frames
+            if frame.startswith("data: ") and frame[len("data: ") :].strip() != "[DONE]"
+        ]
+        answer_text = "".join(
+            payload.get("choices", [{}])[0].get("delta", {}).get("content", "")
+            for payload in payloads
+            if payload.get("object") == "chat.completion.chunk"
+        )
+        self.assertEqual(answer_text, "第一段第二段")
+        source_index = next(index for index, payload in enumerate(payloads) if "event" in payload)
+        delta_index = next(
+            index
+            for index, payload in enumerate(payloads)
+            if payload.get("choices", [{}])[0].get("delta", {}).get("content") == "第一段"
+        )
+        self.assertLess(delta_index, source_index)
 
     def test_refusal_keeps_retrieved_contexts_for_evidence_panel(self) -> None:
         context = _context()

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 from src.llm import get_llm
@@ -103,6 +104,7 @@ def generate_answer(
     system_persona: str,
     answer_style: str,
     track: str = "clinical",
+    stream_callback: Callable[[str], None] | None = None,
 ) -> tuple[str, list[Citation], bool]:
     """
     基于检索证据生成带引用回答；无证据则拒答。
@@ -133,8 +135,29 @@ def generate_answer(
         answer_style=answer_style,
     )
     llm = get_llm()
+    streamed_chunks: list[str] = []
     try:
-        answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
+        if stream_callback is None:
+            answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
+        else:
+            try:
+                for chunk in llm.stream_chat(messages, temperature=0.2, max_tokens=1800):
+                    if not chunk:
+                        continue
+                    streamed_chunks.append(str(chunk))
+                    stream_callback(str(chunk))
+                answer = "".join(streamed_chunks).strip()
+                if not answer:
+                    raise RuntimeError("流式模型返回中没有可读文本")
+            except Exception:
+                # 某些 OpenAI-compatible 网关只支持非流式 Responses；保留完整
+                # 回答能力作为兼容回退，真正拿到增量后才把异常交给外层降级。
+                if streamed_chunks:
+                    raise
+                logger.info("LLM stream unavailable; falling back to non-streaming chat")
+                answer = llm.chat(messages, temperature=0.2, max_tokens=1800)
+                if stream_callback and answer:
+                    stream_callback(answer)
     except Exception as exc:
         # 不把供应商响应正文写入日志，避免令牌/请求内容随异常外泄；证据仍然
         # 可以通过 Sources 面板展示，但必须明确告诉用户没有完成模型综合。
@@ -142,9 +165,15 @@ def generate_answer(
             "LLM synthesis unavailable; returning evidence-only fallback (%s)",
             type(exc).__name__,
         )
-        return _evidence_only_fallback(citations) + DISCLAIMER, citations, True
+        fallback = _evidence_only_fallback(citations) + DISCLAIMER
+        if stream_callback:
+            suffix = fallback if not streamed_chunks else "\n\n" + fallback
+            stream_callback(suffix)
+        return fallback, citations, True
     if DISCLAIMER.strip() not in answer:
         answer = answer.rstrip() + DISCLAIMER
+        if stream_callback:
+            stream_callback(DISCLAIMER)
     return answer, citations, False
 
 

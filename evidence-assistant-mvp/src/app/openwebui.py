@@ -9,9 +9,12 @@ Open WebUI 作为现成前端时，只需要一个能返回模型列表和 Chat 
 from __future__ import annotations
 
 import json
+import logging
 import time
 import uuid
 from collections.abc import Iterator
+from queue import Empty, Queue
+from threading import Event, Thread
 from typing import Any
 
 from fastapi import HTTPException
@@ -20,6 +23,9 @@ from pydantic import BaseModel, Field
 
 from src.models import AskResponse, Citation
 from src.tracks.pipeline import ask
+
+
+logger = logging.getLogger(__name__)
 
 
 MODEL_PROFILES: dict[str, dict[str, str]] = {
@@ -336,6 +342,7 @@ def _stream_payloads(
     created: int,
     model: str,
     answer: str,
+    include_role: bool = True,
 ) -> Iterator[str]:
     """把完整回答拆成 OpenAI SSE chunk，让 Open WebUI 增量渲染。"""
 
@@ -343,27 +350,46 @@ def _stream_payloads(
     chunks = [answer[index : index + 96] for index in range(0, len(answer), 96)] or [""]
     for index, chunk in enumerate(chunks):
         delta: dict[str, Any] = {"content": chunk}
-        if index == 0:
+        if include_role and index == 0:
             delta["role"] = "assistant"
-        payload = {
-            "id": response_id,
-            "object": "chat.completion.chunk",
-            "created": created,
-            "model": model,
-            "choices": [
-                {"index": 0, "delta": delta, "finish_reason": None}
-            ],
-        }
-        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        yield _stream_chunk(
+            response_id=response_id,
+            created=created,
+            model=model,
+            delta=delta,
+        )
 
-    finished = {
+
+def _stream_chunk(
+    *,
+    response_id: str,
+    created: int,
+    model: str,
+    delta: dict[str, Any],
+    finish_reason: str | None = None,
+) -> str:
+    """构造一个符合 Chat Completions SSE 的增量帧。"""
+
+    payload = {
         "id": response_id,
         "object": "chat.completion.chunk",
         "created": created,
         "model": model,
-        "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
     }
-    yield f"data: {json.dumps(finished, ensure_ascii=False)}\n\n"
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _stream_finished(*, response_id: str, created: int, model: str) -> Iterator[str]:
+    """发送结束 chunk 和 OpenAI SSE 的终止标记。"""
+
+    yield _stream_chunk(
+        response_id=response_id,
+        created=created,
+        model=model,
+        delta={},
+        finish_reason="stop",
+    )
     yield "data: [DONE]\n\n"
 
 
@@ -375,22 +401,120 @@ def _stream_rag_answer(
     question: str,
     track: str,
 ) -> Iterator[str]:
-    """先建立 SSE，再执行 RAG，避免 Open WebUI 在远程调用期间无任何反馈。"""
+    """在 RAG worker 中执行问答，并透传真实模型文本增量。"""
 
-    # SSE 注释不会进入回答正文，但会让客户端立即收到响应头和连接状态。
-    yield ": evidence-assistant retrieval-started\n\n"
-    result = ask(question, track=track, top_k=5, use_live_tools=False)
-    contexts = result.contexts or result.citations
-    source_event = _source_event(contexts)
-    if source_event:
-        yield source_event
-    answer = _render_rag_answer(result, include_sources=False)
-    yield from _stream_payloads(
+    # 先发合法 data 帧；只发 SSE 注释会被部分 Open WebUI/代理忽略，表现为
+    # 页面一直等待。后续心跳仍使用注释，避免把状态文案混进回答正文。
+    yield _stream_chunk(
         response_id=response_id,
         created=created,
         model=model,
-        answer=answer,
+        delta={"role": "assistant"},
     )
+    yield ": evidence-assistant retrieval-started\n\n"
+
+    events: Queue[tuple[str, Any]] = Queue()
+    stopped = Event()
+
+    def on_text(text: str) -> None:
+        if text and not stopped.is_set():
+            events.put(("delta", text))
+
+    def run_rag() -> None:
+        try:
+            events.put(
+                (
+                    "result",
+                    ask(
+                        question,
+                        track=track,
+                        top_k=5,
+                        use_live_tools=False,
+                        stream_callback=on_text,
+                    ),
+                )
+            )
+        except Exception as exc:  # pragma: no cover - 仅保护断开的服务线程
+            events.put(("error", exc))
+        finally:
+            events.put(("done", None))
+
+    Thread(target=run_rag, name="evidence-rag-stream", daemon=True).start()
+    result: AskResponse | None = None
+    streamed_text = ""
+    worker_error: Exception | None = None
+
+    try:
+        while True:
+            try:
+                kind, value = events.get(timeout=15)
+            except Empty:
+                yield ": evidence-assistant heartbeat\n\n"
+                continue
+            if kind == "delta":
+                text = str(value)
+                streamed_text += text
+                yield _stream_chunk(
+                    response_id=response_id,
+                    created=created,
+                    model=model,
+                    delta={"content": text},
+                )
+            elif kind == "result":
+                result = value
+            elif kind == "error":
+                worker_error = value
+            elif kind == "done":
+                break
+
+        if result is None:
+            message = "当前问答流被后端中断，请重试。"
+            if worker_error:
+                logger.warning("Open WebUI streaming worker failed: %s", type(worker_error).__name__)
+            yield _stream_chunk(
+                response_id=response_id,
+                created=created,
+                model=model,
+                delta={"content": message if not streamed_text else f"\n\n> {message}"},
+            )
+            yield from _stream_finished(response_id=response_id, created=created, model=model)
+            return
+
+        contexts = result.contexts or result.citations
+        source_event = _source_event(contexts)
+        if source_event:
+            yield source_event
+
+        final_answer = _render_rag_answer(result, include_sources=False)
+        if not streamed_text:
+            yield from _stream_payloads(
+                response_id=response_id,
+                created=created,
+                model=model,
+                answer=final_answer,
+                include_role=False,
+            )
+        elif final_answer.startswith(streamed_text):
+            remainder = final_answer[len(streamed_text) :]
+            if remainder:
+                yield _stream_chunk(
+                    response_id=response_id,
+                    created=created,
+                    model=model,
+                    delta={"content": remainder},
+                )
+        elif final_answer.strip() != streamed_text.strip():
+            # 流式输出已经不可回退；把差异明确告知用户，Sources 仍以最终
+            # 后端校验结果为准，避免悄悄丢失安全提示。
+            yield _stream_chunk(
+                response_id=response_id,
+                created=created,
+                model=model,
+                delta={"content": "\n\n> 后端已完成引用校验，详细来源见 Sources。"},
+            )
+        yield from _stream_finished(response_id=response_id, created=created, model=model)
+    finally:
+        stopped.set()
 
 
 def chat_completions(request: OpenAIChatRequest) -> dict[str, Any] | StreamingResponse:

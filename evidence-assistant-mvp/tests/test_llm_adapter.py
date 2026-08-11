@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 
@@ -26,6 +26,23 @@ def _settings(**overrides: object) -> SimpleNamespace:
     }
     values.update(overrides)
     return SimpleNamespace(**values)
+
+
+class _FakeStreamResponse:
+    def __init__(self, lines: list[str]) -> None:
+        self._lines = lines
+
+    def __enter__(self) -> "_FakeStreamResponse":
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def iter_lines(self):
+        yield from self._lines
 
 
 class LLMAdapterTests(unittest.TestCase):
@@ -107,6 +124,46 @@ class LLMAdapterTests(unittest.TestCase):
         self.assertEqual(kwargs["json"]["max_output_tokens"], 80)
         self.assertEqual(kwargs["json"]["reasoning"], {"effort": "xhigh"})
         self.assertEqual(kwargs["headers"]["Authorization"], "Bearer byeapi-test-token")
+
+    def test_responses_stream_yields_text_deltas(self) -> None:
+        response = _FakeStreamResponse(
+            [
+                'event: response.output_text.delta',
+                'data: {"type":"response.output_text.delta","delta":"第一段"}',
+                "",
+                'data: {"type":"response.output_text.delta","delta":"第二段"}',
+                "",
+                "data: [DONE]",
+                "",
+            ]
+        )
+        stream_context = MagicMock()
+        stream_context.__enter__.return_value = response
+        stream_context.__exit__.return_value = None
+        with (
+            patch(
+                "src.llm.get_settings",
+                return_value=_settings(
+                    llm_api_format="responses",
+                    llm_api_key="byeapi-test-token",
+                    llm_base_url="https://api.byeapi.top",
+                    llm_model="gpt-5.6-luna",
+                ),
+            ),
+            patch("src.llm.httpx.stream", return_value=stream_context) as stream,
+        ):
+            client = LLMClient()
+            chunks = list(
+                client.stream_chat(
+                    [{"role": "user", "content": "限盐与血压？"}],
+                    max_tokens=80,
+                )
+            )
+
+        self.assertEqual(chunks, ["第一段", "第二段"])
+        kwargs = stream.call_args.kwargs
+        self.assertTrue(kwargs["json"]["stream"])
+        self.assertEqual(kwargs["headers"]["accept"], "text/event-stream")
 
     def test_openai_mode_keeps_remote_embedding_default(self) -> None:
         with patch(
