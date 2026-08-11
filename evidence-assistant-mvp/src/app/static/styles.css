@@ -129,6 +129,16 @@ input:focus-visible + .toggle-track {
   font-size: 12px;
 }
 
+.settings-link {
+  color: var(--clinical);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.settings-link:hover {
+  text-decoration: underline;
+}
+
 .status-dot {
   width: 8px;
   height: 8px;
@@ -943,4 +953,3 @@ input:focus-visible + .toggle-track {
     animation-duration: 0.01ms !important;
   }
 }
-

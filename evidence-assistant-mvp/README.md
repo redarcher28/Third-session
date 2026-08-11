@@ -100,6 +100,8 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/open_webui \
 bash scripts/start_openwebui.sh
 
 # 浏览器打开 http://127.0.0.1:8080/
+# Open WebUI 证据台 Banner 中有“模型连接设置”链接；也可以直接打开
+# http://127.0.0.1:8000/settings 配置 API Base URL、API Key、模型名和协议。
 # 首次启动会自动合并证据台 Banner、两条赛道示例问题，并隐藏无关的 Arena Model；
 # 只合并带项目标记的配置，保留现有 Open WebUI 账号的其他设置。
 
@@ -117,6 +119,7 @@ conda run --no-capture-output -p /Users/quentincrane/conda_envs/evidence_mvp \
 # POST /ask/batch  [{"question":"...","track":"nutrition"}]
 # GET  /v1/models
 # POST /v1/chat/completions  （Open WebUI 使用，支持 stream=true）
+# GET  /api/settings/status；POST /api/settings/update；POST /api/settings/test
 # POST /eval/run
 ```
 
@@ -147,13 +150,13 @@ flowchart LR
 ```
 
 没有配置有效 `LLM_API_KEY` 时，检索、引用映射和校验仍会真实运行，但生成文本是离线
-占位回答；正式演示需要在项目 `.env` 中配置可用的 ByeAPI Responses 或其他
-OpenAI-compatible LLM。
+占位回答；正式演示可以在项目 `.env` 中配置可用的 ByeAPI Responses 或其他
+OpenAI-compatible LLM，也可以直接使用上面的模型连接设置页保存运行时配置。
 
 LLM 调用统一收口在 [`src/llm.py`](src/llm.py)：`LLMClient.chat()` 负责查询改写、重排和
-回答生成，`LLMClient.embed()` 负责建库/在线向量查询，配置来自 `.env` 的
+回答生成，`LLMClient.embed()` 负责建库/在线向量查询，配置默认来自 `.env` 的
 `LLM_API_FORMAT`、`LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、`EMBEDDING_MODE` 和
-`EMBEDDING_MODEL`。调用链是：
+`EMBEDDING_MODEL`，也可由 `/settings` 的运行时配置覆盖前四项。调用链是：
 `src/app/openwebui.py` → `src/tracks/pipeline.py::ask` → 赛道改写/检索 →
 `src/generation/answer.py::generate_answer` → `src/llm.py`。
 

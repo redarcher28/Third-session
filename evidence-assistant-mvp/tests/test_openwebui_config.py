@@ -55,7 +55,11 @@ class OpenWebUIConfigTests(unittest.TestCase):
             connection.commit()
             connection.close()
 
-            result = apply_evidence_ui_config(db_path, timestamp=123)
+            result = apply_evidence_ui_config(
+                db_path,
+                timestamp=123,
+                settings_url="http://127.0.0.1:8000/settings",
+            )
             self.assertTrue(result["updated"])
 
             connection = sqlite3.connect(db_path)
@@ -66,6 +70,7 @@ class OpenWebUIConfigTests(unittest.TestCase):
             suggestions = json.loads(rows["ui.prompt_suggestions"])
             self.assertEqual(banners[0]["id"], EVIDENCE_BANNER_ID)
             self.assertEqual(banners[0]["timestamp"], 123)
+            self.assertIn("http://127.0.0.1:8000/settings", banners[0]["content"])
             self.assertIn("existing-banner", {item["id"] for item in banners[1:]})
             self.assertEqual(len(suggestions), len(EVIDENCE_SUGGESTIONS) + 1)
             self.assertEqual(suggestions[-1]["content"], "保留这条建议")

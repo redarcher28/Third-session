@@ -13,6 +13,7 @@ BACKEND_PORT="${EVIDENCE_BACKEND_PORT:-8000}"
 OPENWEBUI_HOST="${OPENWEBUI_HOST:-127.0.0.1}"
 OPENWEBUI_PORT="${OPENWEBUI_PORT:-8080}"
 OPENWEBUI_NAME="${OPENWEBUI_NAME:-证据台}"
+EVIDENCE_SETTINGS_URL="${EVIDENCE_SETTINGS_URL:-http://$BACKEND_HOST:$BACKEND_PORT/settings}"
 
 if [[ ! -x "$BACKEND_ENV_PREFIX/bin/uvicorn" ]]; then
   echo "缺少后端 Conda 环境或 uvicorn：$BACKEND_ENV_PREFIX" >&2
@@ -81,7 +82,8 @@ OPENWEBUI_PID=$!
 for _ in {1..30}; do
   if curl -fsS "http://$OPENWEBUI_HOST:$OPENWEBUI_PORT/api/config" >/dev/null 2>&1; then
     conda run --no-capture-output -p "$OPENWEBUI_ENV_PREFIX" \
-      python "$PROJECT_ROOT/scripts/configure_openwebui.py" --data-dir "$OPENWEBUI_DATA_DIR" \
+      python "$PROJECT_ROOT/scripts/configure_openwebui.py" \
+        --data-dir "$OPENWEBUI_DATA_DIR" --settings-url "$EVIDENCE_SETTINGS_URL" \
       || echo "提示：Open WebUI 证据台配置合并失败，可稍后手动重跑 configure_openwebui.py" >&2
     break
   fi

@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="证据台模型连接设置" />
+    <title>证据台 · 模型连接设置</title>
+    <link rel="stylesheet" href="/assets/settings.css" />
+  </head>
+  <body>
+    <main class="settings-shell">
+      <header class="settings-header">
+        <a class="back-link" id="home-link" href="/">← 返回证据台</a>
+        <span class="eyebrow">EVIDENCE DESK / CONNECTION</span>
+        <h1>模型连接设置</h1>
+        <p>
+          在这里切换 API 地址、令牌和模型名；保存后对后端 RAG 调用立即生效，
+          不需要再编辑项目 <code>.env</code>。
+        </p>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <div>
+          <span class="status-label">当前连接</span>
+          <strong id="status-summary">读取中…</strong>
+        </div>
+        <span id="status-source" class="status-pill">—</span>
+      </section>
+
+      <form id="connection-form" class="settings-card">
+        <div class="field-grid">
+          <label class="field">
+            <span>API 格式</span>
+            <select id="api-format" name="api_format">
+              <option value="responses">OpenAI Responses</option>
+              <option value="openai">OpenAI Chat Completions</option>
+              <option value="anthropic">Anthropic Messages</option>
+            </select>
+            <small>ByeAPI / Codex 配置请选择 Responses。</small>
+          </label>
+
+          <label class="field field-wide">
+            <span>API Base URL</span>
+            <input
+              id="base-url"
+              name="base_url"
+              type="url"
+              required
+              autocomplete="url"
+              placeholder="https://api.byeapi.top"
+            />
+            <small>填服务商根地址或带 <code>/v1</code> 的地址，系统会自动拼接接口路径。</small>
+          </label>
+
+          <label class="field">
+            <span>模型名</span>
+            <input
+              id="model"
+              name="model"
+              type="text"
+              required
+              maxlength="200"
+              autocomplete="off"
+              placeholder="gpt-5.6-luna"
+            />
+          </label>
+
+          <label class="field">
+            <span>Reasoning effort</span>
+            <input
+              id="reasoning-effort"
+              name="reasoning_effort"
+              type="text"
+              maxlength="40"
+              autocomplete="off"
+              placeholder="xhigh（可留空）"
+            />
+          </label>
+
+          <label class="field field-wide">
+            <span>API Key / Token</span>
+            <input
+              id="api-key"
+              name="api_key"
+              type="password"
+              maxlength="1000"
+              autocomplete="new-password"
+              placeholder="留空表示保持当前令牌"
+            />
+            <small id="key-hint">令牌不会回显到页面或提交到 Git。</small>
+          </label>
+        </div>
+
+        <label class="checkbox-field">
+          <input id="clear-api-key" type="checkbox" />
+          <span>清除当前保存的令牌（之后进入离线占位模式）</span>
+        </label>
+
+        <div class="form-actions">
+          <button class="button button-primary" type="submit">保存并立即生效</button>
+          <button class="button button-secondary" id="test-button" type="button">测试模型列表</button>
+          <button class="button button-quiet" id="reset-button" type="button">恢复 .env 配置</button>
+        </div>
+        <p id="form-message" class="form-message" role="status"></p>
+      </form>
+
+      <aside class="security-note">
+        <strong>安全提示</strong>
+        <p>
+          设置接口默认只接受本机访问。运行时配置保存在用户目录的私有文件中，
+          不会覆盖 A 组知识库，也不会写入项目仓库；如果把后端绑定到局域网，
+          请在反向代理层增加认证。
+        </p>
+      </aside>
+    </main>
+    <script src="/assets/settings.js" defer></script>
+  </body>
+</html>
