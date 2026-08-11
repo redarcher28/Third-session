@@ -61,7 +61,15 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
     if coll_path.exists():
         coll_docs = load_docs(coll_path)
         logger.info("Collection corpus -> %d docs", len(coll_docs))
-    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs, coll_docs)
+    # 主题精品知识库（如 salt_bp_kb.json，含 evidence_role 角色标记）
+    kb_docs: list[EvidenceDoc] = []
+    for kb_name in ("salt_bp_kb.json",):
+        kb_path = settings.raw_path / kb_name
+        if kb_path.exists():
+            kb_docs += load_docs(kb_path)
+    if kb_docs:
+        logger.info("Curated topic KB -> %d docs", len(kb_docs))
+    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs, coll_docs, kb_docs)
     all_docs = dedupe_by_doi_or_title(all_docs)
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)

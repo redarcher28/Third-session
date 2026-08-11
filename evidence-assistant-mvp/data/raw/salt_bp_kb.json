@@ -1,0 +1,481 @@
+[
+  {
+    "doc_id": "pmid:40811497",
+    "source": "pubmed",
+    "title": "2025 AHA/ACC/AANP/AAPA/ABC/ACCP/ACPM/AGS/AMA/ASPC/NMA/PCNA/SGIM Guideline for the Prevention, Detection, Evaluation and Management of High Blood Pressure in Adults: A Report of the American College of Cardiology/American Heart Association Joint Committee on Clinical Practice Guidelines.",
+    "text": "2025 年美国 AHA/ACC 等 14 个学会联合发布的《成人高血压预防、检测、评估与管理指南》，正式取代 2017 版指南。基于截至 2024 年 6 月的系统文献检索，定位为可持续更新的 「living document（活文件）」，面向所有管理高血压患者的一线临床与专科医生，内容涵盖血压测量、筛查、诊断、生活方式干预（含限钠）、药物治疗与随访管理全流程。",
+    "year": 2025,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/40811497/",
+    "tags": [
+      "salt_bp",
+      "指南",
+      "guideline"
+    ],
+    "evidence_level": "guideline",
+    "journal": "Circulation",
+    "doi": "10.1161/CIR.0000000000001356",
+    "extra": {
+      "source_type": "guideline",
+      "evidence_role": "指南",
+      "authors": [
+        "Jones DW",
+        "Ferdinand KC",
+        "Taler SJ"
+      ],
+      "abstract_en": "The \"2025 AHA/ACC/AANP/AAPA/ABC/ACCP/ACPM/AGS/AMA/ASPC/NMA/PCNA/SGIM Guideline for the Prevention, Detection, Evaluation, and Management of High Blood Pressure in Adults\" retires and replaces the \"2017 ACC/AHA/AAPA/ABC/ACPM/AGS/APhA/ASH/ASPC/NMA/PCNA Guideline for the Prevention, Detection, Evaluation, and Management of High Blood Pressure in Adults.\" A comprehensive literature search was conducted from December 2023 to June 2024 to identify clinical studies, reviews, and other evidence performed on human subjects that were published since February 2015 in English from MEDLINE (through PubMed), EMBASE, the Cochrane Library, the Agency for Healthcare Research and Quality, and other selected databases relevant to this guideline. The focus of this clinical practice guideline is to create a living, working document updating current knowledge in the field of high blood pressure aimed at all practicing primary care and specialty clinicians who manage patients with hypertension."
+    }
+  },
+  {
+    "doc_id": "pmid:41243115",
+    "source": "pubmed",
+    "title": "Dietary salt intake and cardiovascular outcomes: an umbrella review of meta-analyses and dose-response evidence.",
+    "text": "伞形综述（2025，Annals of Medicine）：汇总 21 项 Meta 分析、91 个结局（检索至 2024-08-28）。低钠摄入与心血管死亡（RR 0.83，95%CI 0.73-0.95）、卒中死亡（RR 0.74，0.57-0.95）、全因死亡（RR 0.88，0.82-0.93）风险降低相关，收缩压降 3.39 mmHg、舒张压降 1.54 mmHg；高盐摄入与心血管病（RR 1.13，1.06-1.20）和高血压（OR 1.33，1.24-1.42）风险增加相关；未观察到对血脂的不良影响。是「限钠有益」最高层级的总览证据。",
+    "year": 2025,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/41243115/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "umbrella_review"
+    ],
+    "evidence_level": "meta",
+    "journal": "Annals of medicine",
+    "doi": "10.1080/07853890.2025.2582065",
+    "extra": {
+      "source_type": "umbrella_review",
+      "evidence_role": "总览",
+      "authors": [
+        "Kong F",
+        "Liu Q",
+        "Zhou Q"
+      ],
+      "pmcid": "PMC12624901",
+      "abstract_en": "Excessive salt intake is a known cardiovascular disease (CVD) risk factor, but the health impacts of both high and low sodium intake remain debated. This study synthesize meta-analytic evidence on dietary salt intake and cardiovascular outcomes, including subgroup and dose-response analyses. PubMed, Embase, Web of Science, and Cochrane Library were searched through August 28, 2024, for meta-analyses of randomized controlled trials and observational studies. 21 meta-analyses comprising 91 outcomes were included. Low sodium intake was associated with reduced risks of CVD mortality (RR = 0.83, 95% CI: 0.73-0.95), stroke mortality (RR = 0.74, 95% CI: 0.57-0.95), and all-cause mortality (RR = 0.88, 95% CI: 0.82-0.93), as well as systolic blood pressure (MD = -3.39 mmHg) and diastolic blood pressure (MD = -1.54 mmHg), improved vascular elasticity, and increased heart rate. Urinary sodium excretion and Na/K ratio decreased, while urinary potassium, calcium, and serum potassium increased. No adverse effects on lipid profiles were observed. High salt intake was associated with increased risks of CVD (RR = 1.13, 95% CI: 1.06-1.20), hypertension (OR = 1.33, 95% CI: 1.24-1.42), stroke (OR = 1."
+    }
+  },
+  {
+    "doc_id": "pmid:40326569",
+    "source": "pubmed",
+    "title": "Dietary Approaches to Stop Hypertension (DASH) for the primary and secondary prevention of cardiovascular diseases.",
+    "text": "Cochrane 系统评价（2025 年更新）：DASH 饮食用于心血管疾病一级与二级预防。纳入 5 项 RCT 共 1397 人，均为一级预防场景（美国、波兰），干预 16 周至 12 个月。硬结局（心梗、卒中、心衰、心血管死亡）事件极少，证据确定性为低至极低（GRADE）；DASH 饮食可降低血压、总胆固醇与甘油三酯、升高 HDL，对 LDL 影响有限。尚无二级预防试验。结论：DASH 对硬临床结局的长期获益证据仍不充分。",
+    "year": 2025,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/40326569/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "systematic_review"
+    ],
+    "evidence_level": "meta",
+    "journal": "The Cochrane database of systematic reviews",
+    "doi": "10.1002/14651858.CD013729.pub2",
+    "extra": {
+      "source_type": "systematic_review",
+      "evidence_role": "总览",
+      "authors": [
+        "Bensaaud A",
+        "Seery S",
+        "Gibson I"
+      ],
+      "pmcid": "PMC12053460",
+      "abstract_en": "The Dietary Approaches to Stop Hypertension (DASH) diet is designed to lower blood pressure and improve cardiovascular health by reducing sodium and unhealthy fats while increasing nutrients, including potassium, calcium, magnesium, and fibre. While evidence supports its benefits for managing cardiovascular risk factors, gaps remain in understanding its long-term impact on preventing cardiovascular disease (CVD), particularly in terms of hard clinical outcomes such as myocardial infarction and stroke. To assess the effects of the DASH diet for the primary and secondary prevention of cardiovascular diseases. We used standard extensive Cochrane search methods. The latest search date was in May 2024. We included randomised controlled trials (RCTs) comparing a DASH diet intervention to no intervention (including usual care), minimal intervention, or other dietary interventions. In the context of this review, 'minimal intervention' includes brief dietary advice or informational leaflets provided during a medical consultation, without a structured dietary intervention. 'Other dietary interventions' include any other dietary programme besides the DASH diet. Participants were adults with o"
+    }
+  },
+  {
+    "doc_id": "pmid:40489102",
+    "source": "pubmed",
+    "title": "Dietary Patterns, Sodium Reduction, and Blood Pressure in Type 2 Diabetes: The DASH4D Randomized Clinical Trial.",
+    "text": "DASH4D 随机 4 期交叉喂养试验（2025，JAMA Internal Medicine）：2 型糖尿病成人的减钠降压作用。102 人（基线血压 135/75 mmHg，87% 为黑人，66% 使用 ≥2 种降压药），每期 5 周、体重恒定。DASH4D 低钠饮食 vs 对照高钠饮食：收缩压降 4.6 mmHg（95%CI 7.2-2.0，P<.001）、舒张压降 2.3 mmHg（3.7-0.9）。血压下降主要发生在前 3 周，减钠的降压作用强于饮食模式本身。注册号：NCT04286555。",
+    "year": 2025,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/40489102/",
+    "tags": [
+      "salt_bp",
+      "因果",
+      "randomized_controlled_trial"
+    ],
+    "evidence_level": "rct",
+    "journal": "JAMA internal medicine",
+    "doi": "10.1001/jamainternmed.2025.1580",
+    "extra": {
+      "source_type": "randomized_controlled_trial",
+      "evidence_role": "因果",
+      "authors": [
+        "Pilla SJ",
+        "Yeh HC",
+        "Mitchell CM"
+      ],
+      "pmcid": "PMC12150227",
+      "nct": "NCT04286555",
+      "abstract_en": "People with type 2 diabetes and hypertension are at high risk for blood pressure-related cardiovascular events. Few trials have tested the blood pressure-lowering effects of dietary interventions other than weight loss in this population. To determine the effects of dietary patterns and sodium reduction on blood pressure in adults with type 2 diabetes. Dietary Approaches to Stop Hypertension for Diabetes (DASH4D) was a randomized 4-period crossover feeding study conducted at a community-based study center from June 2021 to June 2024. It included adults with type 2 diabetes, a systolic blood pressure of 120 to 159 mm Hg, and a diastolic blood pressure of less than 100 mm Hg. The DASH4D diet is a Dietary Approaches to Stop Hypertension (DASH)-style diet optimized for people with type 2 diabetes (lower carbohydrates, higher unsaturated fats, and lower potassium than the original DASH diet). Participants were provided all of their food and ate no outside food. Weight was held constant. Data analysis was completed in November 2024. Participants were randomized to a sequence of 4 diets, each for 5 weeks: (1) DASH4D diet with lower sodium, (2) DASH4D diet with higher sodium, (3) comparison (typical US) diet with lower sodium, and (4) comparison diet with higher sodium (reference). The primary and secondary outcomes were end-of-period systolic and diastolic blood pressure, respectively. The primary dietary contrast compared the DASH4D lower sodium diet vs a comparison higher sodium diet. Of 102 participants, 85 (83.3%) completed all diet periods. The mean (SD) age was 66 (8.8) years, 67 (66%) were women, 6 (6%) were self-reported Asian, 89 (87%) were Black, 2 (2%) were Hispanic, 6 (6%) were White, mean (SD) baseline blood pressure was 135 (9)/75 (9) mm Hg, and 67 (66%) used 2 or more antihypertensive medications. Compared with the comparison diet with higher sodium, the DASH4D diet with lower sodium reduced end-of-period systolic blood pressure by 4.6 mm Hg (95% CI, 7.2-2.0; P < .001) and diastolic blood pressure by 2.3 mm Hg (95% CI, 3.7-0.9). Most blood pressure reduction occurred during the first 3 weeks of each diet, and the effect of sodium reduction appeared stronger than the effect of the DASH4D diet. Adverse events were infrequent in each diet. This randomized clinical trial found that, for adults with type 2 diabetes, most of whom were treated with multiple antihypertensive medications, the DASH4D diet combined with sodium reduction achieved a clinically relevant reduction in blood pressure, primarily from sodium reduction. ClinicalTrials.gov Identifier: NCT04286555."
+    }
+  },
+  {
+    "doc_id": "pmid:40597235",
+    "source": "pubmed",
+    "title": "Associations and mediators of estimated sodium intake with cardiovascular mortality: data based on a national population cohort.",
+    "text": "全国社区队列研究（2025，BMC Medicine，中国）：估算钠摄入与心血管死亡的关联及中介因素。覆盖 215 县/31 省、270,991 人（35-75 岁），以晨尿 Kawasaki 公式估算 24h 尿钠。估算钠摄入均值 222.9±71.0 mmol/天；未用降压药者血压随钠摄入线性上升（每 100 mmol/天 +4.14/1.58 mmHg）。心血管死亡呈 U 形：最低五分位（<163.5 mmol/天）HR 1.17（95%CI 1.05-1.30）、最高五分位（>278.8 mmol/天）HR 1.18（1.05-1.32），最低风险区间为 200.8-235.1 mmol/天（约 4.6-5.4 g 钠/天）；心率与血糖为主要中介。观察性「边界」证据：提示过低与过高钠摄入均需谨慎解读。",
+    "year": 2025,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/40597235/",
+    "tags": [
+      "salt_bp",
+      "边界",
+      "cohort_study"
+    ],
+    "evidence_level": "observational",
+    "journal": "BMC medicine",
+    "doi": "10.1186/s12916-025-04206-8",
+    "extra": {
+      "source_type": "cohort_study",
+      "evidence_role": "边界",
+      "authors": [
+        "Tian Y",
+        "Lin C",
+        "Zhong H"
+      ],
+      "pmcid": "PMC12220591",
+      "abstract_en": "The current research on the association of sodium excretion with health outcomes is inconclusive, despite its linear relationship with blood pressure. Moreover, there is a lack of evidence regarding sodium intake. This study aims to estimate sodium intake, examine its associations with mortality, and explore potential factors that may mediate these associations. Based on a nationwide community-based population cohort in China that covered 215 counties from 31 provinces, we collected fasting morning urine from 270,991 participants aged 35-75 years during Dec 2015 and Dec 2019. We calculated 24-h urinary sodium excretion using the Kawasaki formula, and estimated daily sodium intake by adjusting for sweat excretion based on a model with ambient temperature. We fitted Cox regression models to examine its independent hazard ratios (HR) and 95% confidence intervals (CI) on mortality, and assessed the causal mediation effects of metabolic factors. Among the included participants with an average age of 56 years, the mean of estimated daily sodium intake was 222.9 ± 71.0 mmol. Sodium intake was lower in elderly and women, but higher in participants living in the north or rural areas (P < 0.001 for both). In participants without antihypertensive treatment, blood pressure was positively related to sodium intake (4.14/1.58 mmHg per 100 mmol/day, P < 0.001). Compared with participants in the quintile 3 of sodium intake (i.e., 200.8-235.1 mmol/day), those in the quintile 1 (i.e., < 163.5 mmol/day) had an adjusted HR of 1.17 (95% CI: 1.05-1.30) for cardiovascular mortality, after adjusting for demographic, socioeconomic, behavioural, and clinical characteristics, as well as urinary potassium, with heart rate (29.4%) and blood glucose (18.5%) as major significant mediators. In the meantime, participants in the quintile 5 (i.e., > 278.8 mmol/day) had an adjusted HR of 1.18 (95% CI: 1.05-1.32), with systolic blood pressure (24.6%) and body mass index (2.4%) playing substantial mediating effects. Both high and low sodium intake are associated with increased cardiovascular mortality. The lowest risk is observed at an estimated sodium intake of 200.8-235.1 mmol/day (equivalent to 4.6-5.4 g/day). Mediation analysis suggests that blood pressure, heart rate and glycaemic disorders could be plausible explanations for this U-shaped association."
+    }
+  },
+  {
+    "doc_id": "pmid:39210715",
+    "source": "pubmed",
+    "title": "2024 ESC Guidelines for the management of elevated blood pressure and hypertension.",
+    "text": "2024 年欧洲心脏病学会（ESC）《血压升高与高血压管理指南》，国际权威高血压临床指南。首次引入「血压升高（elevated blood pressure）」类别（诊室血压 120-139/70-89 mmHg），界定于正常血压与高血压（诊室血压 ≥140/90 mmHg）之间。指南以生活方式干预为基础推荐，包括限制盐/钠摄入、规律运动、控制体重等，并结合总体心血管风险评估制定管理策略。适用人群：成人血压管理与高血压防治。",
+    "year": 2024,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/39210715/",
+    "tags": [
+      "salt_bp",
+      "指南",
+      "guideline"
+    ],
+    "evidence_level": "guideline",
+    "journal": "European heart journal",
+    "doi": "10.1093/eurheartj/ehae178",
+    "extra": {
+      "source_type": "guideline",
+      "evidence_role": "指南",
+      "authors": [
+        "McEvoy JW",
+        "McCarthy CP",
+        "Bruno RM"
+      ],
+      "abstract_en": "（指南类文献，PubMed 记录无摘要；正文见期刊全文）"
+    }
+  },
+  {
+    "doc_id": "pmid:39236753",
+    "source": "pubmed",
+    "title": "Blood Pressure-Lowering Medications, Sodium Reduction, and Blood Pressure.",
+    "text": "基于 RCT 的剂量-反应 Meta 分析（2024，Hypertension）：已接受降压药物治疗的高血压患者中，钠摄入减少与血压的关系。纳入 35 项研究、2885 人（中位 28 天）。24h 尿钠每减少 100 mmol：收缩压降 6.81 mmHg（95%CI 4.96-8.66）、舒张压降 3.85 mmHg（2.26-5.43）、平均动脉压降 4.83 mmHg（3.22-6.44）。β 受体阻滞剂、RAAS 抑制剂与双药治疗亚组中减钠降压效应更大。提示在已用药人群中限钠仍有剂量-反应性降压作用。",
+    "year": 2024,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/39236753/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "meta_analysis"
+    ],
+    "evidence_level": "meta",
+    "journal": "Hypertension (Dallas, Tex. : 1979)",
+    "doi": "10.1161/HYPERTENSIONAHA.124.23382",
+    "extra": {
+      "source_type": "meta_analysis",
+      "evidence_role": "总览",
+      "authors": [
+        "Song J",
+        "Chen L",
+        "Xiong H"
+      ],
+      "abstract_en": "Both blood pressure-lowering medication and sodium reduction are effective in hypertension control, but whether the effect of sodium reduction differ across blood pressure-lowering medications is unclear. This study aims to evaluate the dose-response effect of sodium intake reduction on blood pressure in treated hypertensive individuals and the impact of different classes of blood pressure-lowering drugs. We searched multiple databases and reference lists up to July 9, 2024. Randomized controlled trials with a duration of ≥2 weeks comparing the effect of different levels of sodium intake (measured by 24-hour urinary sodium excretion) on blood pressure in hypertensive individuals treated with constant blood pressure-lowering medications were included. Instrumental variable meta-analyses based on random-effects models were conducted to evaluate the dose effect of sodium reduction on blood pressure. Subgroup analyses were performed based on the class of blood pressure-lowering drugs, age, baseline sodium and blood pressure levels, and study duration. We included 35 studies (median duration of 28 days) with a total of 2885 participants. For every 100 mmol reduction in 24-hour urinary s"
+    }
+  },
+  {
+    "doc_id": "pmid:38842286",
+    "source": "pubmed",
+    "title": "Self-Performed Dietary Sodium Reduction and Blood Pressure in Patients With Essential Hypertension: A Randomized Clinical Trial.",
+    "text": "随机对照试验（2024，J Am Heart Assoc）：自我执行限钠饮食对原发性高血压患者 24h 血压的影响。72 名高血压患者按 2:1 随机分入限钠组（仅接受限钠指导）或对照组，为期 4 周。干预组 24h 尿钠排泄较对照组多降 66 mmol（95%CI 96-37）；24h 收缩压组间差 -9 mmHg（95%CI 13-4）、舒张压 -5 mmHg（8-1）。红细胞盐敏感性检测未能预测降压反应。提示日常场景中「自我限钠」即可带来可测的降压效果。",
+    "year": 2024,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/38842286/",
+    "tags": [
+      "salt_bp",
+      "因果",
+      "randomized_controlled_trial"
+    ],
+    "evidence_level": "rct",
+    "journal": "Journal of the American Heart Association",
+    "doi": "10.1161/JAHA.124.034632",
+    "extra": {
+      "source_type": "randomized_controlled_trial",
+      "evidence_role": "因果",
+      "authors": [
+        "Duus CL",
+        "Nielsen SF",
+        "Hornstrup BG"
+      ],
+      "pmcid": "PMC11255768",
+      "abstract_en": "Hypertension is the leading risk factor for cardiovascular disease worldwide. Patients with blood pressure (BP) response to dietary sodium reduction are referred to as \"salt sensitive.\" Salt sensitivity (SS) might be due to differences in sodium storage capacity and the erythrocyte SS examines this capacity of the red blood cells. This study aimed to test the effect of a self-performed sodium reduced diet on BP in patients with essential hypertension and examine whether erythrocyte SS predicts SS. Seventy-two patients with hypertension were included and randomized 2:1 to either sodium reduction or a control group for 4 weeks. Blood samples, 24-hour BP measurement, and 24-hour urine collection were performed before and after. The intervention group received advice on how to lower sodium intake. Urinary sodium excretion decreased 66 mmol (95% CI, -96 to -37 mmol) in the intervention group compared with the control group. Systolic 24-hour BP decreased 9 mm Hg after low-sodium diet compared with the control group (95% CI, -13 to -4 mm Hg). Similarly, the difference in reduction in diastolic BP between the groups was 5 mm Hg (95% CI, -8 to -1 mm Hg). We found no correlation between eryt"
+    }
+  },
+  {
+    "doc_id": "pmid:38519925",
+    "source": "pubmed",
+    "title": "Sex-specific associations between sodium and potassium intake and overall and cause-specific mortality: a large prospective U.S. cohort study, systematic review, and updated meta-analysis of cohort studies.",
+    "text": "大型前瞻队列 + 系统综述/Meta 分析（2024，BMC Medicine）：钠、钾摄入与死亡的性别特异关联。NIH-AARP 研究：237,036 名男性与 179,068 名女性，随访 600 万人年、77,614 例死亡。较高钠摄入（≥2,000 mg/天）与全因及心血管死亡增加相关（最高 vs 最低五分位：男 HR 1.06、女 HR 1.10）；钠钾比与死亡风险的关联更强，且女性更明显。观察性「边界」证据：支持减钠增钾的饮食建议，提示钠钾平衡的重要性。",
+    "year": 2024,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/38519925/",
+    "tags": [
+      "salt_bp",
+      "边界",
+      "cohort_study"
+    ],
+    "evidence_level": "observational",
+    "journal": "BMC medicine",
+    "doi": "10.1186/s12916-024-03350-x",
+    "extra": {
+      "source_type": "cohort_study",
+      "evidence_role": "边界",
+      "authors": [
+        "Gan L",
+        "Zhao B",
+        "Inoue-Choi M"
+      ],
+      "pmcid": "PMC10960470",
+      "abstract_en": "The impact of sodium intake on cardiovascular disease (CVD) health and mortality has been studied for decades, including the well-established association with blood pressure. However, non-linear patterns, dose-response associations, and sex differences in the relationship between sodium and potassium intakes and overall and cause-specific mortality remain to be elucidated and a comprehensive examination is lacking. Our study objective was to determine whether intake of sodium and potassium and the sodium-potassium ratio are associated with overall and cause-specific mortality in men and women. We conducted a prospective analysis of 237,036 men and 179,068 women in the National Institutes of Health-AARP Diet and Health Study. Multivariable-adjusted Cox proportional hazard regression models were utilized to calculate hazard ratios. A systematic review and meta-analysis of cohort studies was also conducted. During 6,009,748 person-years of follow-up, there were 77,614 deaths, 49,297 among men and 28,317 among women. Adjusting for other risk factors, we found a significant positive association between higher sodium intake (≥ 2,000 mg/d) and increased overall and CVD mortality (overall mortality, fifth versus lowest quintile, men and women HRs = 1.06 and 1.10, P Our study demonstrates significant positive associations between daily sodium intake (within the range of sodium intake between 2,000 and 7,500 mg/d), the sodium-potassium ratio, and risk of CVD and overall mortality, with women having stronger sodium-potassium ratio-mortality associations than men, and with the meta-analysis providing compelling support for the CVD associations. These data may suggest decreasing sodium intake and increasing potassium intake as means to improve health and longevity, and our data pointing to a sex difference in the potassium-mortality and sodium-potassium ratio-mortality relationships provide additional evidence relevant to current dietary guidelines for the general adult population. PROSPERO Identifier: CRD42022331618."
+    }
+  },
+  {
+    "doc_id": "pmid:35246796",
+    "source": "pubmed",
+    "title": "Sodium Intake and Risk of Hypertension: A Systematic Review and Dose-Response Meta-analysis of Observational Cohort Studies.",
+    "text": "队列研究剂量-反应 Meta 分析（2022，Current Hypertension Reports）：钠摄入与高血压发生风险。11 项队列研究，以钠摄入/排泄 2 g/天为参照：风险自 3 g/天起开始升高；在采用 24h 尿钠估计且偏倚风险低的研究中，钠摄入/排泄与高血压风险在暴露全范围内近似线性。支持在正常血压与高血压成人中减少钠摄入以预防心血管病的推荐。",
+    "year": 2022,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/35246796/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "meta_analysis"
+    ],
+    "evidence_level": "meta",
+    "journal": "Current hypertension reports",
+    "doi": "10.1007/s11906-022-01182-9",
+    "extra": {
+      "source_type": "meta_analysis",
+      "evidence_role": "总览",
+      "authors": [
+        "Filippini T",
+        "Malavolti M",
+        "Whelton PK"
+      ],
+      "abstract_en": "To assess the relationship between sodium intake and hypertension risk in cohort studies, based on a systematic review up to January 21, 2022, that also employed a dose-response meta-analysis. Dose-response analysis of available cohort studies (n = 11), using a dietary intake or urinary sodium excretion of 2 g/day as the reference category, showed an excess risk starting at 3 g/day. However, we found a linear relationship across the entire range of sodium exposure in an analysis restricted to studies that used 24 h urinary sodium excretion information and had a low risk of bias. This review confirms prior findings based on experimental studies and identified an almost linear relationship between sodium intake/excretion and hypertension risk in cohort studies, reinforcing the validity of recommendations to prevent cardiovascular disease through the reduction of sodium intake in both normotensive and hypertensive adults."
+    }
+  },
+  {
+    "doc_id": "pmid:36443269",
+    "source": "pubmed",
+    "title": "24-Hour Urinary Sodium Excretion Association with Cardiovascular Events: A Systematic Review and Dose-Response Meta-Analysis.",
+    "text": "系统综述与剂量-反应 Meta 分析（2022，Biomed Environ Sci）：24h 尿钠排泄与心血管事件。纳入 9 项队列研究、共 645,006 人。钠排泄与心血管事件呈显著非线性关系；在线性剂量-反应段，钠摄入每增加 1 g/天，心血管事件风险增加约 4%。属于观察性证据的汇总（边界证据的总览形态）。",
+    "year": 2022,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/36443269/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "meta_analysis"
+    ],
+    "evidence_level": "meta",
+    "journal": "Biomedical and environmental sciences : BES",
+    "doi": "10.3967/bes2022.119",
+    "extra": {
+      "source_type": "meta_analysis",
+      "evidence_role": "总览",
+      "authors": [
+        "Zhao D",
+        "Li HM",
+        "Li CX"
+      ],
+      "abstract_en": "The relationship between sodium intake and cardiovascular (CV) events remains unconfirmed. Therefore, we carried out a systematic review and dose-response meta-analysis for evaluating the potential impact of 24-hour sodium excretion on CV risk. Besides, 24-hour sodium excretion was used to replace daily sodium diet intake. We searched ISI Web of Science, Embase, PubMed, and the Cochrane Library. Our study included cohort studies reporting hazard ratio ( A total of 9 studies involving 645,006 participants were included in this study. A significant non-linear relationship was observed between sodium excretion and CV events ( In a linear dose-response manner, every 1 g increase in sodium intake was associated with an increased risk of CV events up to 4%. Further studies are required to validate our conclusions further."
+    }
+  },
+  {
+    "doc_id": "pmid:34459569",
+    "source": "pubmed",
+    "title": "Effect of Salt Substitution on Cardiovascular Events and Death.",
+    "text": "SSaSS 集群随机开放标签试验（2021，NEJM）：盐替代品（75% 氯化钠 + 25% 氯化钾）对硬结局的影响。中国农村 600 个村庄、20,995 人（卒中史或 ≥60 岁伴高血压），中位随访 4.74 年。卒中率 29.14 vs 33.65 次/千人年（RR 0.86，95%CI 0.77-0.96，P=0.006）；主要心血管事件 RR 0.87（0.80-0.94）；全因死亡 RR 0.88（0.82-0.95）；高钾血症相关严重不良事件无显著增加（RR 1.04，0.80-1.37）。注册号：NCT02092090。限钠（换盐）干预降低心血管事件的直接证据。",
+    "year": 2021,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/34459569/",
+    "tags": [
+      "salt_bp",
+      "因果",
+      "randomized_controlled_trial"
+    ],
+    "evidence_level": "rct",
+    "journal": "The New England journal of medicine",
+    "doi": "10.1056/NEJMoa2105675",
+    "extra": {
+      "source_type": "randomized_controlled_trial",
+      "evidence_role": "因果",
+      "authors": [
+        "Neal B",
+        "Wu Y",
+        "Feng X"
+      ],
+      "nct": "NCT02092090",
+      "abstract_en": "Salt substitutes with reduced sodium levels and increased potassium levels have been shown to lower blood pressure, but their effects on cardiovascular and safety outcomes are uncertain. We conducted an open-label, cluster-randomized trial involving persons from 600 villages in rural China. The participants had a history of stroke or were 60 years of age or older and had high blood pressure. The villages were randomly assigned in a 1:1 ratio to the intervention group, in which the participants used a salt substitute (75% sodium chloride and 25% potassium chloride by mass), or to the control group, in which the participants continued to use regular salt (100% sodium chloride). The primary outcome was stroke, the secondary outcomes were major adverse cardiovascular events and death from any cause, and the safety outcome was clinical hyperkalemia. A total of 20,995 persons were enrolled in the trial. The mean age of the participants was 65.4 years, and 49.5% were female, 72.6% had a history of stroke, and 88.4% a history of hypertension. The mean duration of follow-up was 4.74 years. The rate of stroke was lower with the salt substitute than with regular salt (29.14 events vs. 33.65 events per 1000 person-years; rate ratio, 0.86; 95% confidence interval [CI], 0.77 to 0.96; P = 0.006), as were the rates of major cardiovascular events (49.09 events vs. 56.29 events per 1000 person-years; rate ratio, 0.87; 95% CI, 0.80 to 0.94; P<0.001) and death (39.28 events vs. 44.61 events per 1000 person-years; rate ratio, 0.88; 95% CI, 0.82 to 0.95; P<0.001). The rate of serious adverse events attributed to hyperkalemia was not significantly higher with the salt substitute than with regular salt (3.35 events vs. 3.30 events per 1000 person-years; rate ratio, 1.04; 95% CI, 0.80 to 1.37; P = 0.76). Among persons who had a history of stroke or were 60 years of age or older and had high blood pressure, the rates of stroke, major cardiovascular events, and death from any cause were lower with the salt substitute than with regular salt. (Funded by the National Health and Medical Research Council of Australia; SSaSS ClinicalTrials.gov number, NCT02092090.)."
+    }
+  },
+  {
+    "doc_id": "pmid:32094151",
+    "source": "pubmed",
+    "title": "Effect of dose and duration of reduction in dietary sodium on blood pressure levels: systematic review and meta-analysis of randomised trials.",
+    "text": "系统综述与 Meta 分析（2020，BMJ）：限钠幅度与剂量-反应关系。纳入 133 项 RCT、12197 人，均以 24h 尿钠估计摄入量。钠摄入减少幅度与血压下降呈剂量-反应关系；老年、非白人与基线血压较高人群降压幅度更大；短期试验会低估限钠的真实降压效果。是「降低钠摄入使收缩压下降约 2-5 mmHg」表述的剂量-反应证据。",
+    "year": 2020,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/32094151/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "meta_analysis"
+    ],
+    "evidence_level": "meta",
+    "journal": "BMJ (Clinical research ed.)",
+    "doi": "10.1136/bmj.m315",
+    "extra": {
+      "source_type": "meta_analysis",
+      "evidence_role": "总览",
+      "authors": [
+        "Huang L",
+        "Trieu K",
+        "Yoshimura S"
+      ],
+      "pmcid": "PMC7190039",
+      "abstract_en": "To examine the dose-response relation between reduction in dietary sodium and blood pressure change and to explore the impact of intervention duration. Systematic review and meta-analysis following PRISMA guidelines. Ovid MEDLINE(R), EMBASE, and Cochrane Central Register of Controlled Trials (Wiley) and reference lists of relevant articles up to 21 January 2019. Randomised trials comparing different levels of sodium intake undertaken among adult populations with estimates of intake made using 24 hour urinary sodium excretion. Two of three reviewers screened the records independently for eligibility. One reviewer extracted all data and the other two reviewed the data for accuracy. Reviewers performed random effects meta-analyses, subgroup analyses, and meta-regression. 133 studies with 12 197 participants were included. The mean reductions (reduced sodium The magnitude of blood pressure lowering achieved with sodium reduction showed a dose-response relation and was greater for older populations, non-white populations, and those with higher blood pressure. Short term studies underestimate the effect of sodium reduction on blood pressure. PROSPERO CRD42019140812."
+    }
+  },
+  {
+    "doc_id": "pmid:30129465",
+    "source": "pubmed",
+    "title": "Urinary sodium excretion, blood pressure, cardiovascular disease, and mortality: a community-level prospective epidemiological cohort study.",
+    "text": "PURE 社区水平前瞻队列研究（2018，Lancet）：钠摄入与血压、心血管病及死亡的关联。18 国 369 个社区；95,767 人评估血压、82,544 人随访心血管结局，中位随访 8.1 年。社区平均钠摄入每增加 1 g/天，平均收缩压升高 2.86 mmHg；但钠摄入与主要心血管事件的关联呈非线性：仅在摄入最高三分位（>5.08 g/天）见正向关联，最低三分位（<4.43 g/天）甚至为负向（J 形争议的重要来源）；中国社区（80% 平均摄入 >5 g/天）卒中关联显著。属观察性「边界」证据：存在混杂与测量误差，用于说明真实世界关联及其局限。",
+    "year": 2018,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/30129465/",
+    "tags": [
+      "salt_bp",
+      "边界",
+      "cohort_study"
+    ],
+    "evidence_level": "observational",
+    "journal": "Lancet (London, England)",
+    "doi": "10.1016/S0140-6736(18)31376-X",
+    "extra": {
+      "source_type": "cohort_study",
+      "evidence_role": "边界",
+      "authors": [
+        "Mente A",
+        "O'Donnell M",
+        "Rangarajan S"
+      ],
+      "abstract_en": "WHO recommends that populations consume less than 2 g/day sodium as a preventive measure against cardiovascular disease, but this target has not been achieved in any country. This recommendation is primarily based on individual-level data from short-term trials of blood pressure (BP) without data relating low sodium intake to reduced cardiovascular events from randomised trials or observational studies. We investigated the associations between community-level mean sodium and potassium intake, cardiovascular disease, and mortality. The Prospective Urban Rural Epidemiology study is ongoing in 21 countries. Here we report an analysis done in 18 countries with data on clinical outcomes. Eligible participants were adults aged 35-70 years without cardiovascular disease, sampled from the general population. We used morning fasting urine to estimate 24 h sodium and potassium excretion as a surrogate for intake. We assessed community-level associations between sodium and potassium intake and BP in 369 communities (all >50 participants) and cardiovascular disease and mortality in 255 communities (all >100 participants), and used individual-level data to adjust for known confounders. 95 767 participants in 369 communities were assessed for BP and 82 544 in 255 communities for cardiovascular outcomes with follow-up for a median of 8·1 years. 82 (80%) of 103 communities in China had a mean sodium intake greater than 5 g/day, whereas in other countries 224 (84%) of 266 communities had a mean intake of 3-5 g/day. Overall, mean systolic BP increased by 2·86 mm Hg per 1 g increase in mean sodium intake, but positive associations were only seen among the communities in the highest tertile of sodium intake (p<0·0001 for heterogeneity). The association between mean sodium intake and major cardiovascular events showed significant deviations from linearity (p=0·043) due to a significant inverse association in the lowest tertile of sodium intake (lowest tertile <4·43 g/day, mean intake 4·04 g/day, range 3·42-4·43; change -1·00 events per 1000 years, 95% CI -2·00 to -0·01, p=0·0497), no association in the middle tertile (middle tertile 4·43-5·08 g/day, mean intake 4·70 g/day, 4·44-5.05; change 0·24 events per 1000 years, -2·12 to 2·61, p=0·8391), and a positive but non-significant association in the highest tertile (highest tertile >5·08 g/day, mean intake 5·75 g/day, >5·08-7·49; change 0·37 events per 1000 years, -0·03 to 0·78, p=0·0712). A strong association was seen with stroke in China (mean sodium intake 5·58 g/day, 0·42 events per 1000 years, 95% CI 0·16 to 0·67, p=0·0020) compared with in other countries (4·49 g/day, -0·26 events, -0·46 to -0·06, p=0·0124; p<0·0001 for heterogeneity). All major cardiovascular outcomes decreased with increasing potassium intake in all countries. Sodium intake was associated with cardiovascular disease and strokes only in communities where mean intake was greater than 5 g/day. A strategy of sodium reduction in these communities and countries but not in others might be appropriate. Population Health Research Institute, Canadian Institutes of Health Research, Canadian Institutes of Health Canada Strategy for Patient-Oriented Research, Ontario Ministry of Health and Long-Term Care, Heart and Stroke Foundation of Ontario, and European Research Council."
+    }
+  },
+  {
+    "doc_id": "pmid:23633321",
+    "source": "pubmed",
+    "title": "Effect of longer-term modest salt reduction on blood pressure.",
+    "text": "Cochrane 系统评价更新版（2013，CD004937.pub2）：长程（≥4 周）温和限盐对血压的影响，并评估剂量-反应关系及对肾素、醛固酮、儿茶酚胺与血脂的作用。该评价专门回应 Graudal 等「限盐对激素与血脂有不良影响」的说法，指出其结论来自大量短期、大幅减盐试验，与公共卫生推荐的长程温和限盐无关。结论：限盐可降低血压且存在剂量-反应关系。",
+    "year": 2013,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/23633321/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "systematic_review"
+    ],
+    "evidence_level": "meta",
+    "journal": "The Cochrane database of systematic reviews",
+    "doi": "10.1002/14651858.CD004937.pub2",
+    "extra": {
+      "source_type": "systematic_review",
+      "evidence_role": "总览",
+      "authors": [
+        "He FJ",
+        "Li J",
+        "Macgregor GA"
+      ],
+      "pmcid": "PMC11537250",
+      "abstract_en": "A reduction in salt intake lowers blood pressure (BP) and, thereby, reduces cardiovascular risk. A recent meta-analysis by Graudal implied that salt reduction had adverse effects on hormones and lipids which might mitigate any benefit that occurs with BP reduction. However, Graudal's meta-analysis included a large number of very short-term trials with a large change in salt intake, and such studies are irrelevant to the public health recommendations for a longer-term modest reduction in salt intake. We have updated our Cochrane meta-analysis. To assess (1) the effect of a longer-term modest reduction in salt intake (i.e. of public health relevance) on BP and whether there was a dose-response relationship; (2) the effect on BP by sex and ethnic group; (3) the effect on plasma renin activity, aldosterone, noradrenaline, adrenaline, cholesterol, low-density lipoprotein (LDL), high-density lipoprotein (HDL) and triglycerides. We searched MEDLINE, EMBASE, Cochrane Hypertension Group Specialised Register, Cochrane Central Register of Controlled Trials, and reference list of relevant articles. We included randomised trials with a modest reduction in salt intake and duration of at least 4 "
+    }
+  },
+  {
+    "doc_id": "pmid:23558163",
+    "source": "pubmed",
+    "title": "Effect of lower sodium intake on health: systematic review and meta-analyses.",
+    "text": "系统综述与 Meta 分析（2013，BMJ）：降低钠摄入对健康的影响。纳入 14 项前瞻性队列研究与 5 项随机试验，评估降低钠摄入对血压、心血管疾病结局（全因死亡、心血管病、卒中、冠心病）的影响，以及对血脂、儿茶酚胺水平与肾功能等潜在不良效应。结论：降低钠摄入可降低血压并与更低的健康结局风险相关，支持将减钠作为人群预防策略。",
+    "year": 2013,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/23558163/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "systematic_review"
+    ],
+    "evidence_level": "meta",
+    "journal": "BMJ (Clinical research ed.)",
+    "doi": "10.1136/bmj.f1326",
+    "extra": {
+      "source_type": "systematic_review",
+      "evidence_role": "总览",
+      "authors": [
+        "Aburto NJ",
+        "Ziolkovska A",
+        "Hooper L"
+      ],
+      "pmcid": "PMC4816261",
+      "abstract_en": "To assess the effect of decreased sodium intake on blood pressure, related cardiovascular diseases, and potential adverse effects such as changes in blood lipids, catecholamine levels, and renal function. Systematic review and meta-analysis. Cochrane Central Register of Controlled Trials, Medline, Embase, WHO International Clinical Trials Registry Platform, the Latin American and Caribbean health science literature database, and the reference lists of previous reviews. Randomised controlled trials and prospective cohort studies in non-acutely ill adults and children assessing the relations between sodium intake and blood pressure, renal function, blood lipids, and catecholamine levels, and in non-acutely ill adults all cause mortality, cardiovascular disease, stroke, and coronary heart disease. Potential studies were screened independently and in duplicate and study characteristics and outcomes extracted. When possible we conducted a meta-analysis to estimate the effect of lower sodium intake using the inverse variance method and a random effects model. We present results as mean differences or risk ratios, with 95% confidence intervals. We included 14 cohort studies and five rando"
+    }
+  },
+  {
+    "doc_id": "pmid:23558162",
+    "source": "pubmed",
+    "title": "Effect of longer term modest salt reduction on blood pressure: Cochrane systematic review and meta-analysis of randomised trials.",
+    "text": "Cochrane 系统综述与 Meta 分析（2013，BMJ）：长程温和限盐对血压的影响。纳入 34 项 RCT、3230 人（干预≥4 周）。盐摄入平均减少 75 mmol/24h（约 4.4 g 盐/天）时：收缩压下降 4.18 mmHg（95%CI 5.18-3.18）、舒张压下降 2.06 mmHg（2.67-1.45）。Meta 回归显示年龄、种族、血压状态与尿钠变化量与收缩压下降显著相关。限钠降压效应的高质量总览证据代表作。",
+    "year": 2013,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/23558162/",
+    "tags": [
+      "salt_bp",
+      "总览",
+      "meta_analysis"
+    ],
+    "evidence_level": "meta",
+    "journal": "BMJ (Clinical research ed.)",
+    "doi": "10.1136/bmj.f1325",
+    "extra": {
+      "source_type": "meta_analysis",
+      "evidence_role": "总览",
+      "authors": [
+        "He FJ",
+        "Li J",
+        "Macgregor GA"
+      ],
+      "abstract_en": "To determine the effects of longer term modest salt reduction on blood pressure, hormones, and lipids. Systematic review and meta-analysis. Medline, Embase, Cochrane Hypertension Group Specialised Register, Cochrane Central Register of Controlled Trials, and reference list of relevant articles. Randomised trials with a modest reduction in salt intake and duration of at least four weeks. Data were extracted independently by two reviewers. Random effects meta-analyses, subgroup analyses, and meta-regression were performed. Thirty four trials (3230 participants) were included. Meta-analysis showed that the mean change in urinary sodium (reduced salt v usual salt) was -75 mmol/24 h (equivalent to a reduction of 4.4 g/day salt), and with this reduction in salt intake, the mean change in blood pressure was -4.18 mm Hg (95% confidence interval -5.18 to -3.18, I(2)=75%) for systolic blood pressure and -2.06 mm Hg (-2.67 to -1.45, I(2)=68%) for diastolic blood pressure. Meta-regression showed that age, ethnic group, blood pressure status (hypertensive or normotensive), and the change in 24 hour urinary sodium were all significantly associated with the fall in systolic blood pressure, explai"
+    }
+  },
+  {
+    "doc_id": "pmid:11136953",
+    "source": "pubmed",
+    "title": "Effects on blood pressure of reduced dietary sodium and the Dietary Approaches to Stop Hypertension (DASH) diet. DASH-Sodium Collaborative Research Group.",
+    "text": "DASH-Sodium 随机对照试验（2001，NEJM）：限钠与 DASH 饮食对血压的因果证据。412 名参与者随机分入对照饮食或 DASH 饮食组，各组内按随机顺序依次食用高/中/低三档钠（各 30 天）。钠摄入由高降至中档：收缩压降 2.1 mmHg（对照饮食，P<0.001）/ 1.3 mmHg（DASH，P=0.03）；由中降至低档再降 4.6 mmHg（对照，P<0.001）/ 1.7 mmHg（DASH，P<0.01）。与「高钠对照饮食」相比，「低钠 DASH 饮食」使非高血压者收缩压低 7.1 mmHg、高血压者低 11.5 mmHg。降压效应在有无高血压、不同种族与性别中一致存在。「限钠→血压下降」的代表性 RCT。",
+    "year": 2001,
+    "url": "https://pubmed.ncbi.nlm.nih.gov/11136953/",
+    "tags": [
+      "salt_bp",
+      "因果",
+      "randomized_controlled_trial"
+    ],
+    "evidence_level": "rct",
+    "journal": "The New England journal of medicine",
+    "doi": "10.1056/NEJM200101043440101",
+    "extra": {
+      "source_type": "randomized_controlled_trial",
+      "evidence_role": "因果",
+      "authors": [
+        "Sacks FM",
+        "Svetkey LP",
+        "Vollmer WM"
+      ],
+      "abstract_en": "The effect of dietary composition on blood pressure is a subject of public health importance. We studied the effect of different levels of dietary sodium, in conjunction with the Dietary Approaches to Stop Hypertension (DASH) diet, which is rich in vegetables, fruits, and low-fat dairy products, in persons with and in those without hypertension. A total of 412 participants were randomly assigned to eat either a control diet typical of intake in the United States or the DASH diet. Within the assigned diet, participants ate foods with high, intermediate, and low levels of sodium for 30 consecutive days each, in random order. Reducing the sodium intake from the high to the intermediate level reduced the systolic blood pressure by 2.1 mm Hg (P<0.001) during the control diet and by 1.3 mm Hg (P=0.03) during the DASH diet. Reducing the sodium intake from the intermediate to the low level caused additional reductions of 4.6 mm Hg during the control diet (P<0.001) and 1.7 mm Hg during the DASH diet (P<0.01). The effects of sodium were observed in participants with and in those without hypertension, blacks and those of other races, and women and men. The DASH diet was associated with a significantly lower systolic blood pressure at each sodium level; and the difference was greater with high sodium levels than with low ones. As compared with the control diet with a high sodium level, the DASH diet with a low sodium level led to a mean systolic blood pressure that was 7.1 mm Hg lower in participants without hypertension, and 11.5 mm Hg lower in participants with hypertension. The reduction of sodium intake to levels below the current recommendation of 100 mmol per day and the DASH diet both lower blood pressure substantially, with greater effects in combination than singly. Long-term health benefits will depend on the ability of people to make long-lasting dietary changes and the increased availability of lower-sodium foods."
+    }
+  }
+]
