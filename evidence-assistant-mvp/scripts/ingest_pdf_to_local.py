@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import re
 import sys
 from pathlib import Path
 
@@ -32,6 +33,21 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 _MIN_TEXT_CHARS = 80  # 首页文字低于此值视为扫描件，走 OCR
+
+_PAGE_MARK_RE = re.compile(r"^===== 第\d+页 =====$", re.MULTILINE)
+
+
+def clean_ocr_text(text: str) -> str:
+    """
+    清洗 OCR 文本（创新点：提升扫描件入库质量）。
+
+    去除「===== 第N页 =====」页标记、折叠多余空行、清理连排空白，
+    避免页标记被当作检索内容、噪声挤占 chunk 空间。
+    """
+    text = _PAGE_MARK_RE.sub("", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
 
 def _plain_text_pdf(pdf_path: Path) -> str:
@@ -98,7 +114,7 @@ def ingest_pdf(pdf_path: Path) -> Path | None:
         logger.warning("跳过（内容为空）: %s", pdf_path.name)
         return None
     out = out_dir / f"{pdf_path.stem}.md"
-    out.write_text(md, encoding="utf-8")
+    out.write_text(clean_ocr_text(md), encoding="utf-8")
     logger.info("已入库 Markdown: %s（%d 字）", out.name, len(md))
     return out
 

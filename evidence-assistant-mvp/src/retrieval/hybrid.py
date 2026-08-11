@@ -29,8 +29,23 @@ LEVEL_WEIGHT = {
 
 
 def _tokenize(text: str) -> list[str]:
-    """简单中英文分词，供 BM25 使用。"""
-    return re.findall(r"[\w\u4e00-\u9fff]+", text.lower())
+    """
+    中英文分词（BM25 用）。
+
+    创新点：中文连续字符按二元组（bigram）切分——中文无空格，
+    整句会被切成一个词导致 BM25 完全失配；bigram 无需分词依赖即可工作。
+    """
+    tokens: list[str] = []
+    for m in re.finditer(r"[\w\u4e00-\u9fff]+", text.lower()):
+        seg = m.group()
+        if re.fullmatch(r"[\u4e00-\u9fff]+", seg):
+            if len(seg) == 1:
+                tokens.append(seg)
+            else:
+                tokens.extend(seg[i : i + 2] for i in range(len(seg) - 1))
+        else:
+            tokens.append(seg)
+    return tokens
 
 
 class HybridRetriever:
@@ -83,7 +98,9 @@ class HybridRetriever:
         if self.store.count() == 0:
             return []
 
-        vector_hits = self.store.query(query, n_results=candidate_k)
+        # 离线模式：embedding 为哈希占位（无语义相似度），向量分支是纯噪声，
+        # 跳过它让 BM25 关键词召回独挑大梁，保证演示检索质量。
+        vector_hits = [] if get_llm().is_offline else self.store.query(query, n_results=candidate_k)
         bm25_hits = self._bm25_search(query, top_n=candidate_k)
 
         merged: dict[str, dict[str, Any]] = {}

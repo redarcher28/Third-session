@@ -11,7 +11,14 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.config import get_settings
-from src.ingest import dedupe_by_doi_or_title, export_ingest_report, load_docs, merge_docs, save_docs
+from src.ingest import (
+    dedupe_by_doi_or_title,
+    enrich_levels_from_text,
+    export_ingest_report,
+    load_docs,
+    merge_docs,
+    save_docs,
+)
 from src.ingest.clinicaltrials import ingest_clinicaltrials
 from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
@@ -69,8 +76,12 @@ def _run_ingest(*, skip_live: bool = False, retmax: int = 12) -> Path:
             kb_docs += load_docs(kb_path)
     if kb_docs:
         logger.info("Curated topic KB -> %d docs", len(kb_docs))
-    all_docs = merge_docs(local_docs, pubmed_docs, ct_docs, epmc_docs, lit_docs, coll_docs, kb_docs)
+    # 注意顺序：人工/精品语料（salt_bp 中文提炼+证据角色、literature 核实文献）
+    # 必须排在批量采集之前——merge_docs 按 doc_id 先到先得，
+    # 否则重叠 PMID 会被 pubmed/collection_500 的英文版本挤掉。
+    all_docs = merge_docs(kb_docs, lit_docs, local_docs, pubmed_docs, ct_docs, epmc_docs, coll_docs)
     all_docs = dedupe_by_doi_or_title(all_docs)
+    all_docs = enrich_levels_from_text(all_docs)
     out = settings.processed_path / "documents.json"
     save_docs(all_docs, out)
     report = export_ingest_report(all_docs, settings.processed_path / "ingest_report.md")
