@@ -259,3 +259,68 @@ def build_nutrition_action_tips(contexts: list[dict]) -> list[str]:
             if len(tips) >= 5:
                 return tips
     return tips
+
+
+def build_nutrition_answer_outline(contexts: list[dict]) -> dict:
+    """
+    根据证据生成营养科普回答大纲（与临床赛道大纲同构）。
+
+    参数:
+        contexts: 检索证据列表。
+
+    返回:
+        dict: 建议包含
+            - conclusion: str 通俗结论
+            - evidence_sentence: str 证据一句话
+            - action_tips: list[str] 你可以怎么做
+            - when_to_see_doctor: str 何时就医
+
+    作用:
+        约束营养赛道「通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医」结构，
+        方便演示与人工打分。
+    """
+    if not contexts:
+        return {
+            "conclusion": "当前检索未返回可用证据，暂无法给出营养建议。",
+            "evidence_sentence": "暂无证据支撑。",
+            "action_tips": build_nutrition_action_tips(contexts),
+            "when_to_see_doctor": "如有慢性病或用药，请先咨询医生或注册营养师。",
+        }
+
+    top = contexts[0]
+    top_title = str(top.get("title") or "相关证据")
+    tags = [
+        str(t).lower()
+        for c in contexts
+        for t in (c.get("tags") if isinstance(c.get("tags"), list) else [])
+    ]
+    if any("dash" in t for t in tags):
+        pattern = "DASH 饮食"
+    elif any("mediterranean" in t for t in tags):
+        pattern = "地中海式饮食"
+    elif any("sodium" in t for t in tags):
+        pattern = "限钠（减盐）饮食"
+    else:
+        pattern = top_title
+
+    levels = [
+        str(c.get("evidence_level") or "")
+        for c in contexts
+        if str(c.get("evidence_level") or "") in ("meta", "rct", "guideline")
+    ]
+    evidence_sentence = (
+        f"证据主要来自{'、'.join(sorted(set(levels))) if levels else '现有研究'}："
+        f"如「{top_title}」所反映的结论。"
+    )
+    return {
+        "conclusion": (
+            f"综合当前 {len(contexts)} 条证据，{pattern}这类饮食方式"
+            "与改善血压、血脂或心血管风险相关，可作为日常参考方向。"
+        ),
+        "evidence_sentence": evidence_sentence,
+        "action_tips": build_nutrition_action_tips(contexts),
+        "when_to_see_doctor": (
+            "如已确诊慢性病、正在用药或症状明显，请先咨询医生或注册营养师，"
+            "不要自行停药或替代治疗。"
+        ),
+    }

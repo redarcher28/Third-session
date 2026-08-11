@@ -2,7 +2,7 @@
 """
 采集层公共工具：读写与合并 EvidenceDoc。
 
-文末「待完善」签名供队员在本模块内补实现。
+证据等级推断 / DOI 去重 / 采集报告等功能已实现，供上层与 B 组直接调用。
 """
 
 from __future__ import annotations

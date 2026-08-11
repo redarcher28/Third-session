@@ -11,9 +11,9 @@ from typing import Any
 from src.generation.answer import extract_citation_indices
 
 
-PMID_RE = re.compile(r"\bPMID[:\s]*([0-9]{5,9})\b", re.I)
-NCT_RE = re.compile(r"\b(NCT\d{8})\b", re.I)
-DOC_RE = re.compile(r"\b((?:pmid|nct|epmc|local|wiki):[^\s\]，。；;,]+)", re.I)
+PMID_RE = re.compile(r"PMID[:\s]*([0-9]{5,9})(?![0-9])", re.I)
+NCT_RE = re.compile(r"(NCT\d{8})(?![0-9])", re.I)
+DOC_RE = re.compile(r"((?:pmid|nct|epmc|local|wiki):[^\s\]，。；;,]+)", re.I)
 
 
 def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -112,18 +112,13 @@ def strip_invalid_claims(answer: str, check: dict[str, Any]) -> str:
     )
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】引用修复与幻觉防御增强（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
 def repair_answer_with_valid_cites(
     answer: str,
     contexts: list[dict[str, Any]],
     check: dict[str, Any],
 ) -> str:
     """
-    【待完善】当引用校验失败时，基于合法证据重写回答中的引用部分。
+    当引用校验失败时，基于合法证据修复回答中的引用。
 
     参数:
         answer: 原始生成回答。
@@ -136,7 +131,115 @@ def repair_answer_with_valid_cites(
     作用:
         降低假引用残留，提升赛道三「假引用减少」指标表现。
     """
-    raise NotImplementedError("待队员实现：repair_answer_with_valid_cites")
+    if not check or check.get("ok", True):
+        return answer
+
+    n_contexts = len(contexts)
+    valid = set(range(1, n_contexts + 1))
+
+    # 1) 删除越界编号 [n]
+    def _drop_bad(match: "re.Match[str]") -> str:
+        num = int(match.group(1))
+        return f"[{num}]" if num in valid else ""
+
+    fixed = re.sub(r"\[(\d+)\]", _drop_bad, answer)
+
+    # 2) 删除无法核实的 PMID / NCT / 文档 ID（保留原文文字，只去掉标识符）
+    fake_pmids = check.get("fake_pmids") or []
+    fake_ncts = check.get("fake_ncts") or []
+    fake_docs = check.get("fake_docs") or []
+    for pmid in fake_pmids:
+        fixed = re.sub(
+            rf"PMID[:\s]*{re.escape(str(pmid))}(?![0-9])",
+            "PMID[未核实]",
+            fixed,
+            flags=re.I,
+        )
+    for nct in fake_ncts:
+        fixed = re.sub(
+            rf"{re.escape(str(nct))}(?![0-9])",
+            "[试验编号未核实]",
+            fixed,
+            flags=re.I,
+        )
+    for doc in fake_docs:
+        fixed = re.sub(
+            rf"{re.escape(str(doc))}(?![0-9A-Za-z])",
+            "[文献ID未核实]",
+            fixed,
+            flags=re.I,
+        )
+
+    # 3) 若引用被清空而证据存在，为正文首段补一个有效引用
+    if not re.search(r"\[\d+\]", fixed) and n_contexts > 0:
+        fixed = fixed.rstrip()
+        if not fixed.endswith(("[1]", "。", ".")):
+            fixed += "[1]"
+
+    # 4) 在线模式且仍有可疑引用时，用 LLM 结构化重写一次；失败回退规则式结果
+    suspicious = bool(
+        fake_pmids or fake_ncts or fake_docs or check.get("invalid_brackets")
+    )
+    if suspicious:
+        try:
+            from src.llm import get_llm, with_json_mode_chat
+
+            llm = get_llm()
+            if not llm.is_offline:
+                rewritten = _llm_rewrite_citations(answer, contexts)
+                if rewritten and verify_citations(rewritten, contexts).get("ok"):
+                    return rewritten
+        except Exception:
+            pass
+    return fixed
+
+
+def _llm_rewrite_citations(
+    answer: str,
+    contexts: list[dict[str, Any]],
+) -> str | None:
+    """
+    基于合法证据，让 LLM 重写回答中的引用部分（结构化 JSON 输出）。
+
+    参数:
+        answer: 原始回答。
+        contexts: 当次检索证据。
+
+    返回:
+        str | None: 重写后的回答；失败返回 None。
+    """
+    from src.llm import with_json_mode_chat
+
+    evidence_lines = []
+    for i, c in enumerate(contexts, start=1):
+        evidence_lines.append(
+            f"[{i}] {c.get('title') or '无标题'} | {c.get('source') or ''} | "
+            f"{c.get('year') or 'n/a'} | {c.get('doc_id') or ''}\n"
+            f"{(c.get('text') or '')[:240]}"
+        )
+    payload = with_json_mode_chat(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "你是引用修复器。回答中所有 [n] 必须来自给定证据列表；"
+                    "禁止编造 PMID/NCT/文献 ID。保持原回答内容与语气，只修正引用。"
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"原始回答：\n{answer}\n\n"
+                    f"合法证据列表：\n" + "\n\n".join(evidence_lines) + "\n\n"
+                    '输出 JSON：{"answer": "重写后的回答", "citations": [用到的合法编号]}'
+                ),
+            },
+        ],
+        temperature=0.0,
+    )
+    if not isinstance(payload, dict) or not isinstance(payload.get("answer"), str):
+        return None
+    return payload["answer"].strip() or None
 
 
 def detect_unsupported_claims(
@@ -144,7 +247,7 @@ def detect_unsupported_claims(
     contexts: list[dict[str, Any]],
 ) -> list[str]:
     """
-    【待完善】找出回答中可能未被证据支撑的句子/主张。
+    找出回答中可能未被证据支撑的句子/主张。
 
     参数:
         answer: 模型回答。
@@ -156,4 +259,29 @@ def detect_unsupported_claims(
     作用:
         辅助人工复核与自动拒答/降级策略。
     """
-    raise NotImplementedError("待队员实现：detect_unsupported_claims")
+    import re as _re
+
+    # 排除声明/参考文献等结构性文本
+    body = _re.split(r"声明|参考文献|---", answer)[0]
+    context_text = " ".join(
+        str(c.get("text") or "") + " " + str(c.get("title") or "") for c in contexts
+    ).lower()
+    context_tokens = set(_re.findall(r"[\w\u4e00-\u9fff]+", context_text))
+
+    suspicious: list[str] = []
+    for sent in _re.split(r"[。！？!?；;\n]", body):
+        sent = sent.strip()
+        if len(sent) < 8:
+            continue
+        # 有合法 [n] 引用的句子默认视为有支撑
+        if _re.search(r"\[\d+\]", sent):
+            continue
+        toks = _re.findall(r"[\w\u4e00-\u9fff]+", sent.lower())
+        if not toks:
+            continue
+        overlap = sum(1 for t in toks if t in context_tokens) / len(toks)
+        # 含数字/百分比/年份等「具体主张」且与证据重叠不足
+        has_claim_marker = bool(_re.search(r"\d+(\.\d+)?%?|提升|降低|显著|有效|优于", sent))
+        if overlap < 0.35 and has_claim_marker:
+            suspicious.append(sent)
+    return suspicious

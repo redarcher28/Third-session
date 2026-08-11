@@ -9,6 +9,7 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 任务分配、流程图、时序图、架构与函数接口清单见：
 
 - [docs/团队任务与架构说明.md](docs/团队任务与架构说明.md)
+- [docs/RAG提示词设计.md](docs/RAG提示词设计.md)
 
 **待完善接口已分散到各业务模块文件末尾**（格式：函数签名 + 中文备注 + `NotImplementedError`），不再使用集中式 stubs 文件。认领时直接打开对应 `.py` 搜索「【待完善】」。
 
@@ -36,6 +37,33 @@ python -m venv .venv
 pip install -r requirements.txt
 copy .env.example .env   # Linux: cp .env.example .env
 ```
+
+### Python 3.13 环境注意事项（重要）
+
+若本机是 **Python 3.13**，直接 `pip install -r requirements.txt` 会遇到两个坑：
+
+1. `chromadb` 1.x 依赖的 `pybase64` 目前**没有 Python 3.13 兼容版本**，pip 会报 `No matching distribution found`；
+2. 最新版 `fastapi`（0.141+）与 chromadb 存在依赖解析冲突，pip 会长时间回溯。
+
+本仓库已验证可用组合（2026-08，Windows / Python 3.13）：
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate        # Linux/macOS: source .venv/bin/activate
+
+# 1) 先固定兼容版本安装（chromadb 1.5.9 自带预编译向量内核，无需编译器）
+pip install "fastapi==0.116.1" "chromadb==1.5.9" "starlette==0.46.1"
+
+# 2) 其余依赖照常
+pip install -r requirements.txt
+
+# 3) pybase64 垫片：chromadb 仅使用 b64encode_as_string / b64decode，
+#    将纯 Python 垫片复制进虚拟环境即可，无需编译（见 packaging/pybase64.py）
+Copy-Item packaging\pybase64.py .venv\Lib\site-packages\pybase64.py   # Windows
+# cp packaging/pybase64.py .venv/lib/python3.13/site-packages/pybase64.py  # Linux/macOS
+```
+
+> 说明：`chromadb` 1.5.x 仅在包元数据中声明依赖 `pybase64`，代码里实际只用标准库可替代的两个函数，垫片不影响任何功能。`fastapi` 不能低于 0.116、`starlette` 不能低于 0.46，否则新版 streamlit 启动会报 `DEFAULT_EXCLUDED_CONTENT_TYPES` 导入错误。若条件允许，直接安装 **Python 3.12** 也可以绕开上述问题（pybase64 与 chroma-hnswlib 均有 3.12 预编译包）。
 
 编辑 `.env`，填入 OpenAI 兼容接口：
 
@@ -68,6 +96,13 @@ python scripts/build_kb.py
 
 ```bash
 python scripts/smoke_demo.py
+```
+
+赛道专项自检（可选）：
+
+```bash
+python scripts/check_clinical.py    # 赛道一 · 临床证据助手
+python scripts/check_nutrition.py   # 赛道二 · 健康营养助手
 ```
 
 ### 3. 启动界面 / API

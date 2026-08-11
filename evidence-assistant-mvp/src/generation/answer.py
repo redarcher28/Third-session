@@ -111,11 +111,12 @@ def generate_answer(
                 "1. 只能依据给定证据作答，禁止编造文献、PMID、NCT 或链接，不能用训练知识补全。\n"
                 "2. 关键结论句末使用 [n] 引用编号，n 必须来自证据列表。\n"
                 "3. 若证据不足以回答，明确说明证据不足，不要猜测。\n"
-                "4. 证据来源少于 3 个时，用「研究提示」「可能」等弱化表述，不下确定结论。\n"
-                "5. 证据冲突时并列呈现并说明不一致，不选边、不私自修正成唯一答案。\n"
-                "6. 问题超出范围时明确说明边界并拒绝猜测。\n"
-                "7. 文末用「参考文献」列出用到的 [n]。\n"
-                f"8. 回答风格：{answer_style}\n"
+                "4. 若证据只能部分回答，先给出能确认的结论，再明确列出哪些方面缺乏证据支撑，不用推测补全。\n"
+                "5. 证据来源少于 3 个时，用「研究提示」「可能」等弱化表述，不下确定结论。\n"
+                "6. 证据冲突时并列呈现并说明不一致，不选边、不私自修正成唯一答案。\n"
+                "7. 问题超出范围时明确说明边界并拒绝猜测。\n"
+                "8. 文末用「参考文献」列出用到的 [n]。\n"
+                f"9. 回答风格：{answer_style}\n"
             ),
         },
         {
@@ -177,17 +178,12 @@ def extract_citation_indices(answer: str) -> list[int]:
     return sorted({int(x) for x in re.findall(r"\[(\d+)\]", answer)})
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】生成质量增强（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
 def compute_faithfulness_proxy(
     answer: str,
     contexts: list[dict[str, Any]],
 ) -> float:
     """
-    【待完善】计算轻量忠实度代理分数（无需完整 Ragas 也可用）。
+    计算轻量忠实度代理分数（无需完整 Ragas 也可用）。
 
     参数:
         answer: 模型回答。
@@ -199,7 +195,31 @@ def compute_faithfulness_proxy(
     作用:
         为评测增加可量化的「是否忠于检索内容」指标。
     """
-    raise NotImplementedError("待队员实现：compute_faithfulness_proxy")
+    import re as _re
+
+    if not answer.strip() or not contexts:
+        return 0.0
+    context_text = " ".join(
+        str(c.get("text") or "") + " " + str(c.get("title") or "") for c in contexts
+    ).lower()
+    context_tokens = set(_re.findall(r"[\w\u4e00-\u9fff]+", context_text))
+    # 去掉声明/参考文献等非正文部分，避免稀释分数
+    body = _re.split(r"声明|参考文献|---", answer)[0]
+    sentences = _re.split(r"[。！？!?；;\n]", body)
+    scores: list[float] = []
+    for sent in sentences:
+        toks = _re.findall(r"[\w\u4e00-\u9fff]+", sent.lower())
+        # 忽略过短或纯引用编号的片段
+        if len(toks) < 3:
+            continue
+        hits = sum(1 for t in toks if t in context_tokens)
+        scores.append(hits / len(toks))
+    if not scores:
+        return 0.0
+    # 加权：长句权重更高
+    weights = [len(_re.findall(r"[\w\u4e00-\u9fff]+", s)) for s in sentences if len(_re.findall(r"[\w\u4e00-\u9fff]+", s)) >= 3]
+    total_w = sum(weights) or 1.0
+    return round(sum(s * w for s, w in zip(scores, weights)) / total_w, 4)
 
 
 def enforce_citation_density(
@@ -207,7 +227,7 @@ def enforce_citation_density(
     min_cites: int = 2,
 ) -> bool:
     """
-    【待完善】检查回答是否达到最低引用密度要求。
+    检查回答是否达到最低引用密度要求。
 
     参数:
         answer: 模型回答。
@@ -219,12 +239,12 @@ def enforce_citation_density(
     作用:
         防止「空口结论」；可在流水线中触发重生成。
     """
-    raise NotImplementedError("待队员实现：enforce_citation_density")
+    return len(extract_citation_indices(answer)) >= min_cites
 
 
 def format_reference_section(citations: list[Citation]) -> str:
     """
-    【待完善】按统一中文样式生成文末「参考文献」段落。
+    按统一中文样式生成文末「参考文献」段落。
 
     参数:
         citations: Citation 列表。
@@ -235,4 +255,19 @@ def format_reference_section(citations: list[Citation]) -> str:
     作用:
         统一演示输出格式，便于评委核对。
     """
-    raise NotImplementedError("待队员实现：format_reference_section")
+    if not citations:
+        return ""
+    lines = ["\n## 参考文献\n"]
+    for c in citations:
+        parts = [str(c.title or "未命名文献")]
+        if c.source:
+            parts.append(f"来源: {c.source}")
+        if c.year:
+            parts.append(f"年份: {c.year}")
+        if c.evidence_level and c.evidence_level != "other":
+            parts.append(f"证据等级: {c.evidence_level}")
+        entry = " · ".join(parts)
+        if c.url:
+            entry += f"\n   {c.url}"
+        lines.append(f"[{c.index}] {entry}")
+    return "\n".join(lines)

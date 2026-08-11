@@ -12,16 +12,31 @@ import re
 from collections import Counter
 from typing import Any
 
-from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer
+from src.generation.answer import (
+    REFUSAL_TEMPLATE,
+    DISCLAIMER,
+    format_reference_section,
+    generate_answer,
+)
 from src.kb.chunking import docs_to_chunks
 from src.models import AskResponse, Citation
-from src.retrieval.hybrid import HybridRetriever
-from src.tools.cite_check import strip_invalid_claims, verify_citations
+from src.retrieval.hybrid import (
+    HybridRetriever,
+    explain_retrieval,
+    filter_by_year_range,
+)
+from src.tools.cite_check import (
+    repair_answer_with_valid_cites,
+    strip_invalid_claims,
+    verify_citations,
+)
 from src.tools.live_search import search_clinical_trials, search_pubmed
 from src.tracks.clinical import (
     CLINICAL_PERSONA,
     CLINICAL_STYLE,
     PREFER_LEVELS,
+    build_clinical_answer_outline,
+    rank_contexts_for_clinical,
     rewrite_clinical_query,
 )
 from src.tracks.nutrition import (
@@ -29,6 +44,7 @@ from src.tracks.nutrition import (
     NUTRITION_DOSAGE_REFUSAL,
     NUTRITION_PERSONA,
     NUTRITION_STYLE,
+    build_nutrition_answer_outline,
     detect_dosage_request,
     flag_dosage_in_answer,
     rewrite_nutrition_query,
@@ -137,6 +153,31 @@ def _build_qualified_refusal(
     )
 
 
+def _refusal_suggestions(question: str, reason: str) -> list[str]:
+    """根据拒答原因生成改进问法的建议（演示用）。"""
+    if reason == "out_of_scope":
+        return [
+            "把问题限定在本系统覆盖的医学领域（高血压、血脂、糖尿病、饮食营养等）",
+            "换一个有公开证据的问题，例如「高血压 药物治疗 指南 证据」",
+        ]
+    if reason in ("off_domain", "low_relevance"):
+        return [
+            "补充更具体的疾病/干预关键词，例如「高血压 药物治疗 循证」",
+            "尝试已知覆盖主题：血压、血脂、他汀、DASH/地中海饮食",
+        ]
+    if reason == "missing_evidence_type":
+        return [
+            "该主题当前缺少指南/荟萃/RCT 级证据，可尝试换一个更常见的临床问题",
+            "或等待知识库补充该主题的指南与随机对照试验后重试",
+        ]
+    if reason == "empty_context":
+        return [
+            "检查是否开启了「近5年」或「仅高质量证据」等过严筛选",
+            "可尝试开启「启用在线补检索」获取最新证据",
+        ]
+    return ["换个问法，加入更具体的疾病或干预词"]
+
+
 def _live_augment(query: str, contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     可选：在线补拉 PubMed/临床试验证据，插入到 contexts 前端。
@@ -171,6 +212,47 @@ def _live_augment(query: str, contexts: list[dict[str, Any]]) -> list[dict[str, 
     return contexts
 
 
+def _retrieve_fused(
+    retriever: HybridRetriever,
+    queries: list[str],
+    *,
+    top_k: int,
+    prefer_levels: list[str] | None,
+    boost_tags: list[str] | None,
+) -> list[dict[str, Any]]:
+    """
+    多查询检索并按 chunk 融合（RAG prompt 指南 Layer 1：查询改写/多路召回）。
+
+    第一路用改写后的检索式（英文文献为主），其余路用用户原问题（中文关键词），
+    两路结果按 chunk_id 融合去重后按分数排序；LLM 重排只对第一路执行以控制成本。
+    """
+    merged: dict[str, dict[str, Any]] = {}
+    for i, q in enumerate(queries):
+        if not q or not q.strip():
+            continue
+        items = retriever.retrieve(
+            q,
+            top_k=top_k,
+            candidate_k=max(32, top_k * 4),
+            prefer_levels=prefer_levels,
+            boost_tags=boost_tags,
+            use_llm_rerank=(i == 0),
+        )
+        for it in items:
+            cid = str(it.get("chunk_id"))
+            score = float(it.get("score") or 0.0)
+            if cid in merged:
+                merged[cid]["score"] = max(merged[cid]["score"], score)
+            else:
+                merged[cid] = it
+    items = sorted(
+        merged.values(),
+        key=lambda x: float(x.get("score") or 0.0),
+        reverse=True,
+    )
+    return items[:top_k]
+
+
 def ask(
     question: str,
     track: str = "clinical",
@@ -178,6 +260,9 @@ def ask(
     top_k: int = 5,
     use_live_tools: bool = False,
     retriever: HybridRetriever | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
+    high_quality_only: bool = False,
 ) -> AskResponse:
     """
     赛道一/二统一问答入口。
@@ -188,6 +273,9 @@ def ask(
         top_k: 最终证据条数。
         use_live_tools: 是否启用在线补检索。
         retriever: 可选外部注入的检索器（评测复用同一实例）。
+        year_from: 发表年份下限（含），None 不限。
+        year_to: 发表年份上限（含），None 不限。
+        high_quality_only: 只保留指南/荟萃/RCT 证据（无高质量证据时回退）。
 
     返回:
         AskResponse: 含回答、引用、证据面板、拒答标记、校验结果。
@@ -204,7 +292,13 @@ def ask(
                 refused=True,
                 rewritten_query=question,
                 track=track,
-                citation_check={"ok": True, "has_citations": False, "reason": "dosage_request"},
+                citation_check={
+                    "ok": True,
+                    "has_citations": False,
+                    "reason": "dosage_request",
+                    "refusal_reason": "dosage_request",
+                    "suggestions": _refusal_suggestions(question, "dosage_request"),
+                },
             )
         rewritten = rewrite_nutrition_query(question)
         persona, style = NUTRITION_PERSONA, NUTRITION_STYLE
@@ -215,17 +309,30 @@ def ask(
         persona, style = CLINICAL_PERSONA, CLINICAL_STYLE
         prefer, boost = PREFER_LEVELS, None
 
-    contexts = retriever.retrieve(
-        rewritten,
+    contexts = _retrieve_fused(
+        retriever,
+        [rewritten, question],
         top_k=top_k,
         prefer_levels=prefer,
         boost_tags=boost,
     )
+    if track == "clinical":
+        contexts = rank_contexts_for_clinical(contexts)
+    if year_from is not None or year_to is not None:
+        contexts = filter_by_year_range(contexts, year_from=year_from, year_to=year_to)
+    if high_quality_only:
+        hq = [
+            c
+            for c in contexts
+            if str(c.get("evidence_level")) in ("guideline", "meta", "rct")
+        ]
+        if hq:
+            contexts = hq[:top_k]
     if use_live_tools:
         contexts = _live_augment(rewritten, contexts)[: top_k + 2]
 
-    # 临床赛道要求指南/系统综述/RCT 级证据（规则 2：缺预期证据类型→标注不足）
-    expect_levels = tuple(PREFER_LEVELS[:3]) if track == "clinical" else None
+    # 临床赛道要求指南/系统综述/RCT 级证据；wiki 主题页由高质量种子提炼，纳入门槛兜底
+    expect_levels = tuple(PREFER_LEVELS[:4]) if track == "clinical" else None
     reject_reason = _is_low_relevance(question, contexts, expect_levels=expect_levels)
     if reject_reason:
         return AskResponse(
@@ -235,16 +342,51 @@ def ask(
             refused=True,
             rewritten_query=rewritten,
             track=track,
-            citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
+            citation_check={
+                "ok": True,
+                "has_citations": False,
+                "reason": reject_reason,
+                "refusal_reason": reject_reason,
+                "suggestions": _refusal_suggestions(question, reject_reason),
+            },
+        )
+
+    outline = None
+    effective_style = style
+    if track == "clinical":
+        outline = build_clinical_answer_outline(contexts)
+        effective_style = (
+            style
+            + "回答必须按「结论 → 证据等级 → 关键研究/指南 → 局限」四段组织，"
+            "结论句前先汇总所依据的证据等级。"
+        )
+    elif track == "nutrition":
+        outline = build_nutrition_answer_outline(contexts)
+        effective_style = (
+            style
+            + "回答必须按「通俗结论 → 证据一句话 → 你可以怎么做 → 何时就医」"
+            "四段组织，用词口语化、避免堆砌术语。"
         )
 
     answer, citations, refused = generate_answer(
         question,
         contexts,
         system_persona=persona,
-        answer_style=style,
+        answer_style=effective_style,
     )
+    if not refused and "参考文献" not in answer:
+        answer = answer.rstrip() + format_reference_section(citations)
     check = verify_citations(answer, contexts)
+    if not refused and not check.get("ok"):
+        repaired = repair_answer_with_valid_cites(answer, contexts, check)
+        if repaired != answer and verify_citations(repaired, contexts).get("ok"):
+            answer = repaired
+            check = verify_citations(answer, contexts)
+    if outline is not None:
+        if track == "clinical":
+            check["clinical_outline"] = outline
+        else:
+            check["nutrition_outline"] = outline
     if not refused:
         answer = strip_invalid_claims(answer, check)
     # 营养赛道后处理：术语通俗化 + 药量防御警示（面向普通群众的产品边界）
@@ -269,7 +411,7 @@ def ask(
         for i, c in enumerate(contexts, start=1)
     ]
 
-    return AskResponse(
+    resp = AskResponse(
         answer=answer,
         citations=citations,
         contexts=ctx_citations,
@@ -278,16 +420,12 @@ def ask(
         track=track,
         citation_check=check,
     )
-
-
-# ---------------------------------------------------------------------------
-# 【待完善】编排流水线增强（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
+    return attach_retrieval_explanation(resp, explain_retrieval(rewritten, contexts))
 
 
 def detect_track_from_question(question: str) -> str:
     """
-    【待完善】根据问题内容自动判断应走 clinical 还是 nutrition。
+    根据问题内容自动判断应走 clinical 还是 nutrition。
 
     参数:
         question: 用户原问题。
@@ -298,7 +436,28 @@ def detect_track_from_question(question: str) -> str:
     作用:
         支持演示「自动路由赛道」，减少用户手动选 Tab 的负担。
     """
-    raise NotImplementedError("待队员实现：detect_track_from_question")
+    q = question.lower()
+    # 饮食动作/食物类词权重更高：出现即强烈指向营养赛道
+    nutrition_hints = {
+        "饮食": 2, "吃": 2, "食物": 2, "膳食": 2, "食谱": 2, "减重": 2,
+        "营养": 1, "盐": 1, "钠": 1, "地中海": 1, "维生素": 1,
+        "diet": 2, "food": 2, "eat": 2, "nutrition": 1, "recipe": 2,
+        "sodium": 1, "salt": 1, "mediterranean": 1, "dash": 1, "vitamin": 1,
+        "meal": 1,
+    }
+    # 药物/治疗类词权重更高：出现即强烈指向临床赛道
+    clinical_hints = {
+        "药物": 2, "他汀": 2, "治疗": 2, "用药": 2, "剂量": 2,
+        "血压": 1, "高血压": 1, "血脂": 1, "胆固醇": 1, "糖尿病": 1,
+        "血糖": 1, "临床": 1, "患者": 1, "诊断": 1,
+        "statin": 2, "drug": 2, "therapy": 2, "patient": 1, "clinical": 1,
+        "hypertension": 1, "lipid": 1, "cholesterol": 1, "diabetes": 1,
+    }
+    n_score = sum(w for h, w in nutrition_hints.items() if h in q)
+    c_score = sum(w for h, w in clinical_hints.items() if h in q)
+    if n_score > c_score:
+        return "nutrition"
+    return "clinical"
 
 
 def attach_retrieval_explanation(
@@ -306,7 +465,7 @@ def attach_retrieval_explanation(
     explanation: dict,
 ) -> AskResponse:
     """
-    【待完善】把检索可解释信息挂到 AskResponse（如写入 citation_check 扩展字段）。
+    把检索可解释信息挂到 AskResponse（如写入 citation_check 扩展字段）。
 
     参数:
         response: 已有问答响应。
@@ -318,4 +477,6 @@ def attach_retrieval_explanation(
     作用:
         打通检索解释 → 界面展示的数据通道。
     """
-    raise NotImplementedError("待队员实现：attach_retrieval_explanation")
+    check = dict(response.citation_check or {})
+    check["retrieval_explanation"] = explanation
+    return response.model_copy(update={"citation_check": check})

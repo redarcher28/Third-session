@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
 
+    # --- 向量服务（国内 OpenAI 兼容 embeddings：硅基流动 / 阿里 DashScope / 智谱）---
+    # 留空则退化为 BM25 关键词检索（不产生向量噪声）。
+    embedding_api_key: str = ""
+    embedding_base_url: str = ""
+
     # --- NCBI / PubMed 礼貌访问参数 ---
     ncbi_api_key: str = ""
     ncbi_email: str = "evidence-mvp@example.com"
@@ -55,6 +60,11 @@ class Settings(BaseSettings):
         """原始采集数据目录绝对路径。"""
         return PROJECT_ROOT / self.raw_dir
 
+    @property
+    def embedding_available(self) -> bool:
+        """是否配置了真实向量服务（非占位 Key）。"""
+        return bool(self.embedding_api_key) and not self.embedding_api_key.startswith("sk-your-key")
+
 
 # 赛道名称字面量，供类型标注使用
 TrackName = Literal["clinical", "nutrition"]
@@ -74,14 +84,9 @@ def get_settings() -> Settings:
     return Settings()
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】运行时配置校验（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
 def validate_runtime_config() -> dict:
     """
-    【待完善】检查 .env 关键配置是否可用（API Key、路径可写、模型名等）。
+    检查 .env 关键配置是否可用（API Key、路径可写、模型名等）。
 
     参数:
         无
@@ -96,4 +101,39 @@ def validate_runtime_config() -> dict:
     作用:
         演示前一键自检，避免上台才发现未配 Key 或目录不可写。
     """
-    raise NotImplementedError("待队员实现：validate_runtime_config")
+    settings = get_settings()
+    issues: list[str] = []
+
+    has_key = bool(settings.llm_api_key) and not settings.llm_api_key.startswith(
+        "sk-your-key"
+    )
+    offline = not has_key
+    if offline:
+        issues.append("未配置有效 LLM_API_KEY，将使用离线占位模式（正式演示需配置）")
+    if not settings.llm_base_url:
+        issues.append("LLM_BASE_URL 为空")
+    if not settings.llm_model:
+        issues.append("LLM_MODEL 为空")
+    if not settings.embedding_model:
+        issues.append("EMBEDDING_MODEL 为空")
+    if not settings.embedding_available:
+        issues.append("未配置 EMBEDDING_API_KEY，向量检索降级为 BM25 关键词模式")
+
+    # 检查数据目录可写
+    try:
+        settings.chroma_path.mkdir(parents=True, exist_ok=True)
+        probe = settings.chroma_path / ".write_probe"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+    except OSError as e:
+        issues.append(f"向量库目录不可写: {settings.chroma_path} ({e})")
+
+    env_file = PROJECT_ROOT / ".env"
+    if not env_file.exists():
+        issues.append(".env 不存在（当前使用默认配置）")
+
+    return {
+        "ok": not issues or (offline and len(issues) <= 2),
+        "offline_mode": offline,
+        "issues": issues,
+    }

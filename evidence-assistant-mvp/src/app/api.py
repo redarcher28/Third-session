@@ -10,6 +10,7 @@ FastAPI 服务入口。
 
 from __future__ import annotations
 
+import collections
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from src.models import AskRequest, AskResponse
+from src.kb.store import EvidenceStore
 from src.tracks.eval_bench import run_benchmark
 from src.tracks.pipeline import ask
 
@@ -74,11 +76,6 @@ def api_eval_run() -> dict:
     return run_benchmark()
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】API 扩展（只定义签名与备注；若作为路由需自行挂载装饰器）
-# ---------------------------------------------------------------------------
-
-
 def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
     """
     【待完善】批量问答接口逻辑（可用于评测预跑或压力演示）。
@@ -95,9 +92,10 @@ def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
     raise NotImplementedError("待队员实现：api_ask_batch")
 
 
+@app.get("/kb/stats")
 def api_kb_stats() -> dict:
     """
-    【待完善】返回当前知识库规模与构成统计。
+    返回当前知识库规模与构成统计。
 
     参数:
         无
@@ -108,4 +106,35 @@ def api_kb_stats() -> dict:
     作用:
         给前端/报告提供「库里有什么」的只读接口。
     """
-    raise NotImplementedError("待队员实现：api_kb_stats")
+    store = EvidenceStore()
+    chunks = store.all_chunks_for_bm25(limit=5000)
+    count = len(chunks)
+    by_source: dict[str, int] = collections.Counter()
+    by_level: dict[str, int] = collections.Counter()
+    tag_counter: collections.Counter = collections.Counter()
+    years: list[int] = []
+    for c in chunks:
+        src = str(c.get("source") or "unknown")
+        lvl = str(c.get("evidence_level") or "other")
+        by_source[src] += 1
+        by_level[lvl] += 1
+        raw_tags = c.get("tags")
+        if isinstance(raw_tags, str):
+            tags = [t.strip() for t in raw_tags.split(",") if t.strip()]
+        else:
+            tags = [str(t) for t in (raw_tags or []) if t]
+        tag_counter.update(tags)
+        try:
+            year = int(c.get("year"))
+            if year > 0:
+                years.append(year)
+        except (TypeError, ValueError):
+            pass
+    return {
+        "count": count,
+        "by_source": dict(by_source),
+        "by_level": dict(by_level),
+        "top_tags": tag_counter.most_common(10),
+        "year_range": [min(years), max(years)] if years else None,
+        "collection": "evidence_chunks",
+    }

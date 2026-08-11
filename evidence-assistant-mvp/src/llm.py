@@ -11,11 +11,15 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+from pathlib import Path
 
 from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from src import PROJECT_ROOT
 from src.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -37,11 +41,23 @@ class LLMClient:
             not settings.llm_api_key
             or settings.llm_api_key.startswith("sk-your-key")
         )
+        # 独立向量客户端：国内服务商（硅基流动 / 阿里 DashScope / 智谱等）的
+        # OpenAI 兼容 embeddings 接口；未配置时退化为关键词检索。
+        self._embed_client = OpenAI(
+            api_key=settings.embedding_api_key or settings.llm_api_key,
+            base_url=settings.embedding_base_url or settings.llm_base_url,
+        )
+        self._embedding_available = settings.embedding_available
 
     @property
     def is_offline(self) -> bool:
         """是否处于离线占位模式。"""
         return self._offline
+
+    @property
+    def embedding_available(self) -> bool:
+        """是否可调用真实向量服务（False 时混合检索跳过向量分支）。"""
+        return self._embedding_available
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=8))
     def chat(
@@ -85,14 +101,21 @@ class LLMClient:
         """
         if not texts:
             return []
-        if self._offline:
+        if not self._embedding_available:
+            # 未配置独立向量服务：直接哈希占位，避免对聊天服务商发无效请求。
             return [self._hash_embed(t) for t in texts]
-        resp = self._client.embeddings.create(
-            model=self.embedding_model,
-            input=texts,
-        )
-        data = sorted(resp.data, key=lambda x: x.index)
-        return [list(d.embedding) for d in data]
+        try:
+            resp = self._embed_client.embeddings.create(
+                model=self.embedding_model,
+                input=texts,
+            )
+            data = sorted(resp.data, key=lambda x: x.index)
+            return [list(d.embedding) for d in data]
+        except Exception as e:
+            # 部分服务商（如 DeepSeek）不提供 embedding 接口：
+            # 降级为本地哈希向量，保证检索链路不中断。
+            logger.warning("embedding API failed (%s); fallback to hash embedding", e)
+            return [self._hash_embed(t) for t in texts]
 
     def _offline_chat(self, messages: list[dict[str, str]]) -> str:
         """
@@ -116,6 +139,27 @@ class LLMClient:
                 "本页由离线模式生成，仅作演示结构占位。请配置 LLM_API_KEY 后重建 Wiki。\n"
             )
         if "证据" in system or "citation" in system.lower() or "[" in user:
+            if "临床" in system:
+                return (
+                    "**结论**：现有证据支持在规范生活方式干预的基础上，"
+                    "对血压/血脂管理按指南使用药物治疗[1]。\n\n"
+                    "**证据等级**：指南与荟萃分析为主（guideline/meta），"
+                    "并含 RCT 支持。\n\n"
+                    "**关键研究/指南**：[1] 高血压长期药物治疗的循证要点（guideline）。\n\n"
+                    "**局限**：演示语料范围有限，结论需人工复核原文；"
+                    "本系统不提供个体化处方与剂量建议。\n\n"
+                    "参考文献见文末列表。"
+                )
+            if "营养" in system:
+                return (
+                    "**通俗结论**：均衡饮食与适度限盐对血压/血脂管理有帮助[1]。\n\n"
+                    "**证据一句话**：现有研究提示地中海饮食、DASH 饮食等模式"
+                    "与心血管风险降低相关。\n\n"
+                    "**你可以怎么做**：多吃蔬果与全谷物，少盐少加工食品，"
+                    "循序渐进地调整。\n\n"
+                    "**何时就医**：已有慢性病或正在用药，调整饮食前先咨询医生。\n\n"
+                    "参考文献见文末列表。"
+                )
             return (
                 "根据当前检索到的证据，相关研究发现生活方式干预与规范药物治疗在"
                 "血脂/血压管理中均有支持依据[1]。证据不足处请结合临床判断，"
@@ -174,18 +218,13 @@ def get_llm() -> LLMClient:
     return _client
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】模型调用增强（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
 def with_json_mode_chat(
     messages: list[dict[str, str]],
     *,
     temperature: float = 0.0,
 ) -> dict:
     """
-    【待完善】要求模型输出 JSON，并解析为 dict。
+    要求模型输出 JSON，并解析为 dict。
 
     参数:
         messages: 对话消息。
@@ -197,12 +236,39 @@ def with_json_mode_chat(
     作用:
         供重排、大纲、评分解析等结构化任务复用，减少正则抠文本。
     """
-    raise NotImplementedError("待队员实现：with_json_mode_chat")
+    import re
+
+    instructed = [
+        *messages,
+        {
+            "role": "system",
+            "content": (
+                "只输出一个合法 JSON 对象，不要输出 Markdown 代码块或任何解释。"
+            ),
+        },
+    ]
+    raw = get_llm().chat(instructed, temperature=temperature, max_tokens=1200)
+    cleaned = raw.strip()
+    # 去掉可能的 ```json ... ``` 包裹
+    fence = re.search(r"```(?:json)?\s*(.*?)\s*```", cleaned, flags=re.S)
+    if fence:
+        cleaned = fence.group(1)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        # 兜底：截取第一个 { 到最后一个 }
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start != -1 and end > start:
+            try:
+                return json.loads(cleaned[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+        raise ValueError(f"模型未返回合法 JSON: {raw[:200]!r}")
 
 
 def embed_with_cache(texts: list[str], cache_dir: str | None = None) -> list[list[float]]:
     """
-    【待完善】带本地缓存的 embedding，避免重复计费。
+    带本地缓存的 embedding，避免重复计费。
 
     参数:
         texts: 文本列表。
@@ -214,4 +280,36 @@ def embed_with_cache(texts: list[str], cache_dir: str | None = None) -> list[lis
     作用:
         加快反复建库/调试时的向量化速度。
     """
-    raise NotImplementedError("待队员实现：embed_with_cache")
+    if not texts:
+        return []
+    cache_root = Path(cache_dir) if cache_dir else PROJECT_ROOT / "data" / "cache" / "embeddings"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_root / "embed_cache.json"
+
+    cache: dict[str, list[float]] = {}
+    if cache_file.exists():
+        try:
+            cache = json.loads(cache_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            cache = {}
+
+    keys = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+    missing: list[int] = []
+    result: list[list[float]] = [cache.get(k) for k in keys]  # type: ignore[list-item]
+    for i, v in enumerate(result):
+        if v is None:
+            missing.append(i)
+
+    if missing:
+        llm = get_llm()
+        new_vecs = llm.embed([texts[i] for i in missing])
+        for i, vec in zip(missing, new_vecs):
+            cache[keys[i]] = vec
+            result[i] = vec
+        try:
+            cache_file.write_text(
+                json.dumps(cache, ensure_ascii=False), encoding="utf-8"
+            )
+        except OSError as e:
+            logger.warning("embed cache write failed: %s", e)
+    return result  # type: ignore[return-value]

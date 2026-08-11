@@ -29,22 +29,24 @@ LEVEL_WEIGHT = {
 
 
 def _tokenize(text: str) -> list[str]:
-    """
-    中英文分词（BM25 用）。
+    """简单中英文分词（整词），供关键词展示使用。"""
+    return re.findall(r"[\w\u4e00-\u9fff]+", text.lower())
 
-    创新点：中文连续字符按二元组（bigram）切分——中文无空格，
-    整句会被切成一个词导致 BM25 完全失配；bigram 无需分词依赖即可工作。
+
+def _bm25_tokenize(text: str) -> list[str]:
+    """
+    BM25 用分词：英文按词；中文整词 + 相邻二元组。
+
+    中文整句作为单一词元时几乎无法匹配，加入二元组可显著提升中文检索召回。
     """
     tokens: list[str] = []
-    for m in re.finditer(r"[\w\u4e00-\u9fff]+", text.lower()):
-        seg = m.group()
-        if re.fullmatch(r"[\u4e00-\u9fff]+", seg):
-            if len(seg) == 1:
-                tokens.append(seg)
-            else:
-                tokens.extend(seg[i : i + 2] for i in range(len(seg) - 1))
+    for part in re.findall(r"[\w\u4e00-\u9fff]+", text.lower()):
+        if re.search(r"[\u4e00-\u9fff]", part):
+            tokens.append(part)
+            if len(part) > 1:
+                tokens.extend(part[i : i + 2] for i in range(len(part) - 1))
         else:
-            tokens.append(seg)
+            tokens.append(part)
     return tokens
 
 
@@ -67,7 +69,7 @@ class HybridRetriever:
         if not self._bm25_docs:
             self._bm25 = None
             return
-        corpus = [_tokenize(d.get("text", "")) for d in self._bm25_docs]
+        corpus = [_bm25_tokenize(d.get("text", "")) for d in self._bm25_docs]
         corpus = [t if t else ["empty"] for t in corpus]
         self._bm25 = BM25Okapi(corpus)
 
@@ -98,24 +100,30 @@ class HybridRetriever:
         if self.store.count() == 0:
             return []
 
-        # 离线模式：embedding 为哈希占位（无语义相似度），向量分支是纯噪声，
-        # 跳过它让 BM25 关键词召回独挑大梁，保证演示检索质量。
-        vector_hits = [] if get_llm().is_offline else self.store.query(query, n_results=candidate_k)
+        # 未配置真实向量服务时，embedding 为哈希占位（无语义相似度），
+        # 向量分支是纯噪声：跳过它让 BM25 关键词召回独挑大梁，保证检索质量。
+        vector_hits = [] if not get_llm().embedding_available else self.store.query(query, n_results=candidate_k)
         bm25_hits = self._bm25_search(query, top_n=candidate_k)
+        extra_lists: list[list[dict[str, Any]]] = []
+        if prefer_levels:
+            level_set = {str(x) for x in prefer_levels}
+            level_docs = [
+                d
+                for d in self._bm25_docs
+                if str(d.get("evidence_level")) in level_set
+            ]
+            if level_docs:
+                extra_lists.append(
+                    self._bm25_search(query, top_n=candidate_k, docs=level_docs)
+                )
 
+        # RRF 融合：排名倒数融合，避免单一召回头部分数淹没另一路的相关命中
+        fused = reciprocal_rank_fusion(vector_hits, bm25_hits, *extra_lists, k=60)
         merged: dict[str, dict[str, Any]] = {}
-        for rank, h in enumerate(vector_hits):
-            cid = h["chunk_id"]
-            score = 1.0 / (rank + 1)
-            merged[cid] = {**h, "score": score, "from_vector": True, "from_bm25": False}
-        for rank, h in enumerate(bm25_hits):
-            cid = h["chunk_id"]
-            score = 1.0 / (rank + 1)
-            if cid in merged:
-                merged[cid]["score"] += score
-                merged[cid]["from_bm25"] = True
-            else:
-                merged[cid] = {**h, "score": score, "from_vector": False, "from_bm25": True}
+        for item in fused:
+            cid = item["chunk_id"]
+            item["score"] = item.get("fusion_score", 0.0)
+            merged[cid] = item
 
         boost_tags = boost_tags or []
         prefer_levels = prefer_levels or []
@@ -152,16 +160,30 @@ class HybridRetriever:
                 break
         return final
 
-    def _bm25_search(self, query: str, top_n: int = 16) -> list[dict[str, Any]]:
-        """关键词召回：返回 BM25 分数最高的 top_n 条。"""
-        if not self._bm25 or not self._bm25_docs:
-            self._refresh_bm25()
-        if not self._bm25:
+    def _bm25_search(
+        self,
+        query: str,
+        top_n: int = 16,
+        docs: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        关键词召回：返回 BM25 分数最高的 top_n 条。
+
+        参数:
+            query: 查询。
+            top_n: 返回条数。
+            docs: 可选语料子集（如仅高质量证据）；None 使用全量语料。
+        """
+        corpus_docs = docs if docs is not None else self._bm25_docs
+        if not corpus_docs:
             return []
-        tokens = _tokenize(query) or ["empty"]
-        scores = self._bm25.get_scores(tokens)
+        corpus = [_bm25_tokenize(d.get("text", "")) for d in corpus_docs]
+        corpus = [t if t else ["empty"] for t in corpus]
+        index = BM25Okapi(corpus)
+        tokens = _bm25_tokenize(query) or ["empty"]
+        scores = index.get_scores(tokens)
         ranked = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_n]
-        return [{**self._bm25_docs[i], "bm25": float(s)} for i, s in ranked if s > 0]
+        return [{**corpus_docs[i], "bm25": float(s)} for i, s in ranked if s > 0]
 
     def _llm_rerank(
         self, query: str, candidates: list[dict[str, Any]], top_k: int
@@ -214,14 +236,9 @@ class HybridRetriever:
             return candidates[:top_k]
 
 
-# ---------------------------------------------------------------------------
-# 【待完善】增强检索型 RAG（只定义签名与备注，不写函数体）
-# ---------------------------------------------------------------------------
-
-
 def score_evidence_priority(item: dict[str, Any]) -> float:
     """
-    【待完善】按证据等级给单条结果打优先级分。
+    按证据等级给单条结果打优先级分。
 
     参数:
         item: 检索结果 dict，至少含 evidence_level。
@@ -232,7 +249,8 @@ def score_evidence_priority(item: dict[str, Any]) -> float:
     作用:
         供临床赛道加权排序，突出高质量证据。
     """
-    raise NotImplementedError("待队员实现：score_evidence_priority")
+    level = str(item.get("evidence_level") or "other").lower()
+    return float(LEVEL_WEIGHT.get(level, 1.0))
 
 
 def filter_by_year_range(
@@ -241,7 +259,7 @@ def filter_by_year_range(
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
     """
-    【待完善】按发表年份过滤检索结果。
+    按发表年份过滤检索结果。
 
     参数:
         items: 检索结果列表。
@@ -254,12 +272,27 @@ def filter_by_year_range(
     作用:
         演示「近五年证据」等产品能力。
     """
-    raise NotImplementedError("待队员实现：filter_by_year_range")
+    out: list[dict[str, Any]] = []
+    for item in items:
+        raw_year = item.get("year")
+        try:
+            year = int(raw_year)
+        except (TypeError, ValueError):
+            # 年份未知：仅在完全没有年份约束时保留
+            if year_from is None and year_to is None:
+                out.append(item)
+            continue
+        if year_from is not None and year < year_from:
+            continue
+        if year_to is not None and year > year_to:
+            continue
+        out.append(item)
+    return out
 
 
 def explain_retrieval(query: str, items: list[dict[str, Any]]) -> dict[str, Any]:
     """
-    【待完善】生成检索过程的可解释说明（演示用）。
+    生成检索过程的可解释说明（演示用）。
 
     参数:
         query: 用户或改写后的查询。
@@ -276,7 +309,34 @@ def explain_retrieval(query: str, items: list[dict[str, Any]]) -> dict[str, Any]
     作用:
         让评委看懂「为什么选了这些文献」，而不是黑盒。
     """
-    raise NotImplementedError("待队员实现：explain_retrieval")
+    query_tokens = set(_tokenize(query))
+    why_selected: list[str] = []
+    sources: list[str] = []
+    for i, item in enumerate(items, start=1):
+        title = str(item.get("title") or "无标题")
+        source = str(item.get("source") or "unknown")
+        level = str(item.get("evidence_level") or "other")
+        text = f"{item.get('text') or ''} {title}"
+        hit_terms = sorted(query_tokens & set(_tokenize(text)))[:6]
+        year = item.get("year")
+        year_s = str(year) if year not in (None, -1, "-1") else "年份未知"
+        if hit_terms:
+            why = f"[{i}] {title}（{source}/{level}/{year_s}）：命中关键词「{'、'.join(hit_terms)}」"
+        else:
+            why = f"[{i}] {title}（{source}/{level}/{year_s}）：语义相近或来源加权"
+        why_selected.append(why)
+        if source not in sources:
+            sources.append(source)
+    notes = (
+        f"共召回 {len(items)} 条证据，覆盖来源：{'、'.join(sources) or '无'}。"
+        "排序综合了向量相关度、BM25 关键词与证据等级加权。"
+    )
+    return {
+        "query": query,
+        "why_selected": why_selected,
+        "sources": sources,
+        "notes": notes,
+    }
 
 
 def diversify_by_source(
@@ -284,7 +344,7 @@ def diversify_by_source(
     max_per_source: int = 2,
 ) -> list[dict[str, Any]]:
     """
-    【待完善】按来源多样性重排，避免同一来源占满 Top-K。
+    按来源多样性重排，避免同一来源占满 Top-K。
 
     参数:
         items: 已排序的候选证据。
@@ -296,20 +356,36 @@ def diversify_by_source(
     作用:
         增强检索型 RAG 的证据覆盖面（文献+试验+wiki 等）。
     """
-    raise NotImplementedError("待队员实现：diversify_by_source")
+    groups: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for item in items:
+        src = str(item.get("source") or "unknown")
+        if src not in groups:
+            groups[src] = []
+            order.append(src)
+        groups[src].append(item)
+    result: list[dict[str, Any]] = []
+    idx = {src: 0 for src in order}
+    active = True
+    while active:
+        active = False
+        for src in order:
+            if idx[src] < len(groups[src]) and idx[src] < max_per_source:
+                result.append(groups[src][idx[src]])
+                idx[src] += 1
+                active = True
+    return result
 
 
 def reciprocal_rank_fusion(
-    vector_hits: list[dict[str, Any]],
-    bm25_hits: list[dict[str, Any]],
+    *ranked_lists: list[dict[str, Any]],
     k: int = 60,
 ) -> list[dict[str, Any]]:
     """
-    【待完善】对向量召回与 BM25 召回做 RRF 融合排序。
+    对多路召回做 RRF 融合排序（向量 / BM25 / 等级限定 BM25 等）。
 
     参数:
-        vector_hits: 向量检索结果（有序）。
-        bm25_hits: BM25 检索结果（有序）。
+        *ranked_lists: 多路有序召回结果。
         k: RRF 常数，常用 60。
 
     返回:
@@ -318,4 +394,13 @@ def reciprocal_rank_fusion(
     作用:
         替代简单分值相加，提升混合检索稳定性。
     """
-    raise NotImplementedError("待队员实现：reciprocal_rank_fusion")
+    merged: dict[str, dict[str, Any]] = {}
+    for lst in ranked_lists:
+        for rank, hit in enumerate(lst, start=1):
+            cid = str(hit.get("chunk_id") or f"r-{rank}")
+            if cid in merged:
+                merged[cid]["fusion_score"] += 1.0 / (k + rank)
+            else:
+                merged[cid] = {**hit, "fusion_score": 1.0 / (k + rank)}
+    fused = sorted(merged.values(), key=lambda x: x["fusion_score"], reverse=True)
+    return fused
