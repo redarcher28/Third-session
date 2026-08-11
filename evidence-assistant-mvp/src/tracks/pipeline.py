@@ -57,6 +57,35 @@ OUT_OF_SCOPE = {
 }
 
 
+def _contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:
+    """把已检索上下文转换为前端可展示的证据卡片。
+
+    拒答并不代表没有检索结果：当证据等级或相关性不足时，用户仍需要看到
+    “系统查到了什么、为什么不够”的证据面板。此前拒答分支把 contexts 清空，
+    导致备用页和 Open WebUI 都只能显示一段文字，丢失了旧前端的来源卡片。
+    """
+    cards: list[Citation] = []
+    for index, context in enumerate(contexts, start=1):
+        year = context.get("year")
+        try:
+            parsed_year = None if year in (None, -1, "-1") else int(year)
+        except (TypeError, ValueError):
+            parsed_year = None
+        cards.append(
+            Citation(
+                index=index,
+                doc_id=str(context.get("doc_id") or context.get("chunk_id") or ""),
+                title=str(context.get("title") or ""),
+                source=str(context.get("source") or ""),
+                year=parsed_year,
+                url=str(context.get("url") or ""),
+                evidence_level=str(context.get("evidence_level") or "other"),
+                snippet=str(context.get("text") or "")[:240],
+            )
+        )
+    return cards
+
+
 def _tokenize(text: str) -> set[str]:
     """提取中英文词元集合，供重叠度计算。"""
     return set(re.findall(r"[\w\u4e00-\u9fff]+", text.lower()))
@@ -262,7 +291,8 @@ def ask(
         return AskResponse(
             answer=_build_qualified_refusal(question, contexts, reject_reason) + DISCLAIMER,
             citations=[],
-            contexts=[],
+            # 证据不足时仍保留检索到的上下文，供旧证据栏和 Open WebUI 来源区展示。
+            contexts=_contexts_to_citations(contexts),
             refused=True,
             rewritten_query=rewritten,
             track=track,
@@ -294,19 +324,7 @@ def ask(
                 "\n\n> ⚠️ 如涉及具体药量/剂量，请以医生或药师的意见为准，切勿自行调整。"
             )
 
-    ctx_citations = [
-        Citation(
-            index=i,
-            doc_id=str(c.get("doc_id") or ""),
-            title=str(c.get("title") or ""),
-            source=str(c.get("source") or ""),
-            year=None if c.get("year") in (None, -1, "-1") else int(c["year"]),
-            url=str(c.get("url") or ""),
-            evidence_level=str(c.get("evidence_level") or "other"),
-            snippet=str(c.get("text") or "")[:240],
-        )
-        for i, c in enumerate(contexts, start=1)
-    ]
+    ctx_citations = _contexts_to_citations(contexts)
 
     return AskResponse(
         answer=answer,

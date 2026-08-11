@@ -132,6 +132,20 @@ def _single_line(value: Any, fallback: str = "") -> str:
     return " ".join(text.split())
 
 
+def _markdown_label(value: Any, fallback: str = "") -> str:
+    """转义证据标题/摘要中的 Markdown 控制字符。"""
+
+    text = _single_line(value, fallback)
+    return (
+        text.replace("\\", "\\\\")
+        .replace("`", "\\`")
+        .replace("*", "\\*")
+        .replace("_", "\\_")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+    )
+
+
 def _source_footer(
     citations: list[Citation],
     *,
@@ -145,7 +159,10 @@ def _source_footer(
     if not citations and not retrieval:
         return ""
 
-    lines = ["\n\n---\n### 证据面板"]
+    lines = [
+        "\n\n---\n### 证据面板",
+        "> 下面的来源由本项目 RAG 后端生成；回答中的 `[n]` 与来源卡片编号对应。",
+    ]
     retrieved_count = retrieval.get("retrieved_count")
     if retrieved_count is not None:
         lines.append(f"- 本次检索：{retrieved_count} 条证据")
@@ -174,16 +191,17 @@ def _source_footer(
             ]
         )
         for citation in citations:
-            title = _single_line(citation.title, citation.doc_id or "未命名来源")
+            title = _markdown_label(citation.title, citation.doc_id or "未命名来源")
             metadata = [
-                _single_line(citation.evidence_level, "other"),
-                _single_line(citation.source, "unknown"),
+                _markdown_label(citation.evidence_level, "other"),
+                _markdown_label(citation.source, "unknown"),
             ]
             if citation.year:
                 metadata.append(str(citation.year))
-            lines.append(f"- **[{citation.index}] {title}**（{'，'.join(metadata)}）")
-            snippet = _single_line(citation.snippet, "暂无摘要片段")
-            lines.append(f"  摘要：{snippet}")
+            lines.append(f"#### [{citation.index}] {title}")
+            lines.append(f"- 证据等级 / 来源：{' / '.join(metadata)}")
+            snippet = _markdown_label(citation.snippet, "暂无摘要片段")
+            lines.append(f"- 摘要：{snippet}")
             if citation.url.strip():
                 lines.append(f"  原文：[打开原始来源](<{citation.url.strip()}>)")
 

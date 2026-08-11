@@ -43,13 +43,78 @@
       .replaceAll("'", "&#039;");
   }
 
-  function renderPlainMarkdown(value) {
+  function renderInlineMarkdown(value) {
     return escapeHtml(value)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-      .replace(/^### (.+)$/gm, "<h4>$1</h4>")
-      .replace(/^## (.+)$/gm, "<h3>$1</h3>")
-      .replace(/^# (.+)$/gm, "<h3>$1</h3>")
-      .replace(/\n/g, "<br />");
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/\[([^\]]+)\]\((?:&lt;)?(https?:\/\/[^\s)]+)(?:&gt;)?\)/g,
+        '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  }
+
+  function renderPlainMarkdown(value) {
+    const lines = String(value ?? "").split(/\r?\n/);
+    const html = [];
+    let inList = false;
+    let paragraph = [];
+
+    const closeList = () => {
+      if (inList) {
+        html.push("</ul>");
+        inList = false;
+      }
+    };
+    const flushParagraph = () => {
+      if (paragraph.length) {
+        html.push(`<p>${paragraph.map(renderInlineMarkdown).join("<br />")}</p>`);
+        paragraph = [];
+      }
+    };
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        flushParagraph();
+        closeList();
+        return;
+      }
+      const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) {
+        flushParagraph();
+        closeList();
+        const level = Math.min(heading[1].length + 1, 5);
+        html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+        return;
+      }
+      if (/^---+$/.test(trimmed)) {
+        flushParagraph();
+        closeList();
+        html.push("<hr />");
+        return;
+      }
+      const item = trimmed.match(/^[-*]\s+(.+)$/);
+      if (item) {
+        flushParagraph();
+        if (!inList) {
+          html.push("<ul>");
+          inList = true;
+        }
+        html.push(`<li>${renderInlineMarkdown(item[1])}</li>`);
+        return;
+      }
+      if (/^>\s?/.test(trimmed)) {
+        flushParagraph();
+        closeList();
+        html.push(`<blockquote>${renderInlineMarkdown(trimmed.replace(/^>\s?/, ""))}</blockquote>`);
+        return;
+      }
+      closeList();
+      paragraph.push(trimmed);
+    });
+
+    flushParagraph();
+    closeList();
+    return html.join("");
   }
 
   function setNotice(message, kind = "info") {
@@ -269,4 +334,3 @@
   });
   bootstrap();
 })();
-

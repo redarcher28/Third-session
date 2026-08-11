@@ -164,6 +164,7 @@ class RagContractTests(unittest.TestCase):
         self.assertIn("[1]", content)
         self.assertIn("### 证据面板", content)
         self.assertIn("### 证据来源", content)
+        self.assertIn("#### [1] 高血压管理指南摘要", content)
         self.assertIn("高血压管理指南摘要", content)
         self.assertIn("摘要：指南指出，长期管理需要结合血压控制目标与整体心血管风险。", content)
         self.assertIn("改写查询：`hypertension guideline long-term management`", content)
@@ -176,6 +177,25 @@ class RagContractTests(unittest.TestCase):
             top_k=5,
             use_live_tools=False,
         )
+
+    def test_refusal_keeps_retrieved_contexts_for_evidence_panel(self) -> None:
+        context = _context()
+        context["evidence_level"] = "other"
+        retriever = _FakeRetriever([context])
+        with patch(
+            "src.tracks.pipeline.rewrite_clinical_query",
+            return_value="hypertension lifestyle evidence",
+        ):
+            response = ask(
+                "高血压应该注意什么？",
+                track="clinical",
+                retriever=retriever,
+            )
+
+        self.assertTrue(response.refused)
+        self.assertEqual(response.citation_check["reason"], "missing_evidence_type")
+        self.assertEqual(len(response.contexts), 1)
+        self.assertEqual(response.contexts[0].title, "高血压管理指南摘要")
 
     def test_latest_main_nutrition_aliases_reach_chinese_bm25_tokens(self) -> None:
         rewritten = append_nutrition_query_aliases("膳食纤维对心血管风险有什么研究提示？", "膳食纤维")
