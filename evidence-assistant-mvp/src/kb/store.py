@@ -6,12 +6,16 @@ Chroma 向量仓储：负责 chunk 入库、语义检索、导出 BM25 语料。
 from __future__ import annotations
 
 import logging
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings
 
 from src.config import get_settings
+from src.ingest import load_docs
+from src.kb.chunking import docs_to_chunks, merge_tiny_chunks
 from src.llm import get_llm
 from src.models import Chunk
 
@@ -103,6 +107,7 @@ class EvidenceStore:
         *,
         n_results: int = 10,
         tag_filter: str | None = None,
+        source: str | None = None,
     ) -> list[dict[str, Any]]:
         """
         语义检索 Top-N。
@@ -111,6 +116,7 @@ class EvidenceStore:
             query: 查询文本。
             n_results: 返回条数。
             tag_filter: 可选标签过滤（部分 Chroma 版本可能不支持，失败则回退）。
+            source: 可选来源过滤（如 "wiki"），比 $contains 更可靠。
 
         返回:
             list[dict]: 每项含 chunk_id/text/distance 及元数据字段。
@@ -122,8 +128,13 @@ class EvidenceStore:
             "n_results": n_results,
             "include": ["documents", "metadatas", "distances"],
         }
+        where: dict[str, Any] = {}
         if tag_filter:
-            kwargs["where"] = {"tags": {"$contains": tag_filter}}
+            where["tags"] = {"$contains": tag_filter}
+        if source:
+            where["source"] = source
+        if where:
+            kwargs["where"] = where
         try:
             res = self._col.query(**kwargs)
         except Exception:
@@ -179,13 +190,28 @@ class EvidenceStore:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】向量库运维与重建（只定义签名与备注，不写函数体）
+# 向量库运维与重建
 # ---------------------------------------------------------------------------
+
+
+def _existing_texts(store: EvidenceStore) -> dict[str, str]:
+    """导出集合中现有 chunk_id -> text 映射，供增量重建比对。"""
+    col = store._col
+    count = col.count()
+    if not count:
+        return {}
+    res = col.get(limit=count, include=["documents"])
+    return dict(zip(res["ids"], res["documents"] or []))
 
 
 def rebuild_collection_from_processed(reset: bool = True) -> int:
     """
-    【待完善】仅从 data/processed 已有文件重建向量索引，不重新联网采集。
+    仅从 data/processed 已有文件重建向量索引，不重新联网采集。
+
+    创新点：
+        - 增量模式（reset=False）：以「文档文本指纹」比对，正文未变的 chunk 直接跳过，
+          只重算变化/新增内容，改切分参数或加料后秒级更新；
+        - 自动选择 documents_with_wiki.json，缺失时回退 documents.json。
 
     参数:
         reset: 是否先清空再写入；默认 True。
@@ -196,20 +222,71 @@ def rebuild_collection_from_processed(reset: bool = True) -> int:
     作用:
         改切分策略或 embedding 后快速重建，缩短联调时间。
     """
-    raise NotImplementedError("待队员实现：rebuild_collection_from_processed")
+    settings = get_settings()
+    merged = settings.processed_path / "documents_with_wiki.json"
+    if not merged.exists():
+        merged = settings.processed_path / "documents.json"
+    docs = load_docs(merged)
+    # 与 build_kb 流水线保持一致（同样经过短块合并），保证 chunk_id 口径相同
+    chunks = merge_tiny_chunks(docs_to_chunks(docs))
+    store = EvidenceStore()
+    if reset:
+        store.reset()
+    else:
+        existing = _existing_texts(store)
+        before = len(chunks)
+        chunks = [c for c in chunks if existing.get(c.chunk_id) != c.text]
+        if chunks:
+            logger.info("Incremental rebuild: %d changed/new chunks (skipped %d unchanged)", len(chunks), before - len(chunks))
+        else:
+            logger.info("Incremental rebuild: nothing changed, store untouched (count=%d)", store.count())
+            return 0
+    n = store.upsert_chunks(chunks)
+    logger.info("Rebuilt knowledge base: %d chunks upserted (store count=%d)", n, store.count())
+    return n
 
 
-def export_store_stats(out_path=None) -> dict:
+def export_store_stats(out_path: Path | None = None) -> dict:
     """
-    【待完善】导出当前向量库统计信息（总量、来源分布、标签分布）。
+    导出当前向量库统计信息（总量、来源分布、证据等级分布、年份分布）。
+
+    创新点：
+        - 覆盖文档数 docs_covered：区分「chunk 数」与「去重后文献数」，
+          演示时更能体现知识库真实规模；
+        - 可选双格式输出：JSON（机器可读）+ Markdown（报告直接贴）。
 
     参数:
-        out_path: 可选 Path；若提供则同时写入 JSON/Markdown。
+        out_path: 可选 Path；若提供则同时写入 .json 与 .md。
 
     返回:
-        dict: 统计结果，建议含 count / by_source / by_level。
+        dict: 统计结果，含 count / docs_covered / by_source / by_level / by_year。
 
     作用:
         演示与报告中展示知识库规模与构成。
     """
-    raise NotImplementedError("待队员实现：export_store_stats")
+    store = EvidenceStore()
+    items = store.all_chunks_for_bm25(limit=100000)
+    by_source = Counter(m.get("source", "?") for m in items)
+    by_level = Counter(m.get("evidence_level", "other") for m in items)
+    by_year = Counter(m.get("year", "unknown") for m in items)
+    docs_covered = {m.get("doc_id") for m in items}
+    stats: dict[str, Any] = {
+        "count": len(items),
+        "docs_covered": len(docs_covered),
+        "by_source": dict(by_source),
+        "by_level": dict(by_level),
+        "by_year": dict(sorted(by_year.items(), key=lambda kv: (kv[0] == "unknown", str(kv[0])))),
+    }
+    if out_path:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        import json
+
+        out_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+        md_path = out_path.with_suffix(".md")
+        lines = ["# 向量库统计", "", f"- chunk 总数: {stats['count']}", f"- 覆盖文档数: {stats['docs_covered']}"]
+        lines += ["", "## 来源分布", ""] + [f"- {k}: {v}" for k, v in sorted(by_source.items())]
+        lines += ["", "## 证据等级分布", ""] + [f"- {k}: {v}" for k, v in sorted(by_level.items())]
+        lines += ["", "## 年份分布", ""] + [f"- {k}: {v}" for k, v in stats["by_year"].items()]
+        md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        logger.info("Store stats -> %s / %s", out_path, md_path)
+    return stats
