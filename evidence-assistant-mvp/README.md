@@ -73,6 +73,22 @@ ByeAPI 的 Responses Base URL 保持根地址，客户端会请求 `/v1/response
 ByeAPI Responses 不保证提供本项目所需的 Embeddings，因此 `EMBEDDING_MODE=local` 会
 使用本地哈希向量并让中文 bigram BM25 负责关键词召回；这样 ByeAPI 只需要一个 token。
 
+### DeepSeek 直连
+
+设置页的“服务商预设”提供 DeepSeek V4 Flash 和 V4 Pro。DeepSeek 官方提供
+OpenAI-compatible 接口，直连时使用 `https://api.deepseek.com`，模型 ID 使用
+`deepseek-v4-flash` 或 `deepseek-v4-pro`；项目会自动把 Embedding 切到本地，避免把
+同一个 DeepSeek Key 误用于不适配的向量接口。具体模型与接口以
+[DeepSeek 官方文档](https://api-docs.deepseek.com/zh-cn/)为准。
+
+```env
+LLM_API_FORMAT=openai
+LLM_API_KEY=你的 DeepSeek API Key
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL=deepseek-v4-flash
+EMBEDDING_MODE=local
+```
+
 未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
 
 交互请求默认使用本地词法查询扩展、中文 Bigram BM25/向量混合排序和证据等级加权，
