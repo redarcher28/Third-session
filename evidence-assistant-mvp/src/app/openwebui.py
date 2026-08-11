@@ -169,6 +169,12 @@ def _source_footer(
     rewritten_query = _single_line(retrieval.get("rewritten_query"))
     if rewritten_query:
         lines.append(f"- 改写查询：`{rewritten_query}`")
+    rewrite_mode = _single_line(retrieval.get("query_reformulation_mode"))
+    if rewrite_mode:
+        mode_label = {"lexical": "本地词法扩展", "llm": "远程 LLM 改写", "guarded": "安全边界"}.get(
+            rewrite_mode, rewrite_mode
+        )
+        lines.append(f"- 查询改写方式：{mode_label}")
     sources = retrieval.get("sources") or {}
     if isinstance(sources, dict) and sources:
         source_summary = "，".join(

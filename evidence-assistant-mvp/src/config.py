@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     # 交互请求默认关闭二次 LLM 重排：BM25/向量混合排序和证据等级加权仍然生效，
     # 需要更强排序时可通过 RAG_USE_LLM_RERANK=true 恢复，但每次请求会多一次远程调用。
     rag_use_llm_rerank: bool = False
+    # 查询改写默认使用本地词法扩展；改为 true 才会额外请求一次远程 LLM。
+    rag_use_llm_query_rewrite: bool = False
 
     # 主前端由独立的 Open WebUI 进程提供；FastAPI 只保留 /fallback 备用页。
     openwebui_url: str = "http://127.0.0.1:8080/"

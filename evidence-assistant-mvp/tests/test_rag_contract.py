@@ -8,6 +8,7 @@ Open WebUI 回显”的连接关系，不写入 A 组知识库或 Chroma 数据�
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from src.app.openwebui import OpenAIChatRequest, OpenAIMessage, chat_completions
@@ -113,6 +114,13 @@ class RagContractTests(unittest.TestCase):
                 "src.tracks.pipeline.generate_answer",
                 return_value=("证据支持长期管理有助于控制相关风险[1]。", [citation], False),
             ),
+            patch(
+                "src.tracks.pipeline.get_settings",
+                return_value=SimpleNamespace(
+                    rag_use_llm_query_rewrite=True,
+                    rag_use_llm_rerank=False,
+                ),
+            ),
         ):
             response = ask(
                 "高血压为什么有时需要长期管理？",
@@ -187,6 +195,12 @@ class RagContractTests(unittest.TestCase):
         with patch(
             "src.tracks.pipeline.rewrite_clinical_query",
             return_value="hypertension lifestyle evidence",
+        ), patch(
+            "src.tracks.pipeline.get_settings",
+            return_value=SimpleNamespace(
+                rag_use_llm_query_rewrite=True,
+                rag_use_llm_rerank=False,
+            ),
         ):
             response = ask(
                 "高血压应该注意什么？",

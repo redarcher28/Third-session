@@ -60,6 +60,7 @@ LLM_BASE_URL=https://api.byeapi.top
 LLM_MODEL=gpt-5.6-luna
 LLM_REASONING_EFFORT=xhigh
 RAG_USE_LLM_RERANK=false
+RAG_USE_LLM_QUERY_REWRITE=false
 EMBEDDING_MODE=local
 ```
 
@@ -73,10 +74,11 @@ ByeAPI Responses 不保证提供本项目所需的 Embeddings，因此 `EMBEDDIN
 
 未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
 
-交互请求默认使用本地中文 Bigram BM25/向量混合排序和证据等级加权，不额外调用一次
-LLM 做候选重排，因此响应更快；如需开启二次重排，把 `RAG_USE_LLM_RERANK` 改为
-`true`。回答响应中的 `timings_ms` 和证据面板耗时行可用于定位改写、检索、生成、
-引用校验分别花了多久。
+交互请求默认使用本地词法查询扩展、中文 Bigram BM25/向量混合排序和证据等级加权，
+不额外调用查询改写和候选重排 LLM，因此只需等待一次最终回答生成。如需启用预置的
+远程 query reformulation Prompt，把 `RAG_USE_LLM_QUERY_REWRITE` 改为 `true`；如需
+启用二次候选重排，把 `RAG_USE_LLM_RERANK` 改为 `true`。回答响应中的 `timings_ms`
+和证据面板耗时行可用于定位改写、检索、生成、引用校验分别花了多久。
 
 如果电脑上使用的是 Conda prefix 环境而不是环境名，可这样启动，脚本仍兼容：
 

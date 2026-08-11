@@ -252,11 +252,17 @@
       .filter(([key]) => timingLabels[key])
       .map(([key, value]) => `${timingLabels[key]} ${Math.round(value)} ms`)
       .join(" · ");
+    const rewriteMode = {
+      lexical: "本地词法扩展",
+      llm: "远程 LLM 改写",
+      guarded: "安全边界",
+    }[retrieval.query_reformulation_mode] || "";
     els.retrievalSummary.hidden = false;
     els.retrievalSummary.innerHTML = `
       <span class="summary-label">检索记录</span>
       <span>${escapeHtml(retrieval.retrieved_count)} 条证据 · ${escapeHtml(sources || "来源未知")}</span>
       <span class="summary-query">查询：${escapeHtml(retrieval.rewritten_query || "")}</span>
+      ${rewriteMode ? `<span>改写方式：${escapeHtml(rewriteMode)}</span>` : ""}
       ${timingText ? `<span>耗时：${escapeHtml(timingText)}</span>` : ""}`;
   }
 

@@ -31,6 +31,7 @@ from src.tracks.nutrition import (
     NUTRITION_DOSAGE_REFUSAL,
     NUTRITION_PERSONA,
     NUTRITION_STYLE,
+    append_nutrition_query_aliases,
     detect_dosage_request,
     flag_dosage_in_answer,
     rewrite_nutrition_query,
@@ -210,12 +211,14 @@ def _retrieval_summary(
     top_k: int,
     use_live_tools: bool,
     timings_ms: dict[str, float] | None = None,
+    query_reformulation_mode: str = "llm",
 ) -> dict[str, Any]:
     """生成供前端和报告使用的轻量检索摘要，不暴露完整内部候选。"""
     sources = Counter(str(c.get("source") or "unknown") for c in contexts)
     levels = Counter(str(c.get("evidence_level") or "other") for c in contexts)
     summary = {
         "rewritten_query": rewritten_query,
+        "query_reformulation_mode": query_reformulation_mode,
         "requested_top_k": top_k,
         "retrieved_count": len(contexts),
         "sources": dict(sources),
@@ -233,6 +236,17 @@ def _finish_timings(timings_ms: dict[str, float], started: float) -> dict[str, f
 
     timings_ms["total_ms"] = round((perf_counter() - started) * 1000, 1)
     return timings_ms
+
+
+def _lexical_query_rewrite(question: str, track: str) -> str:
+    """用确定性词法扩展替代交互请求中的额外远程改写调用。
+
+    这不是回答生成：它只保留用户原词，并补充知识库中已有的证据类型/主题锚点。
+    需要更强的语义改写时仍可通过 RAG_USE_LLM_QUERY_REWRITE=true 使用预置 Prompt。
+    """
+    if track == "nutrition":
+        return append_nutrition_query_aliases(question, question)
+    return f"{question.strip()} guideline RCT systematic review meta-analysis"[:500]
 
 def ask(
     question: str,
@@ -263,6 +277,7 @@ def ask(
 
     retriever = retriever or HybridRetriever()
     profile = get_track_profile(track)
+    settings = get_settings()
 
     if track == "nutrition":
         # 产品边界：问具体药量/剂量的问题直接通俗拒答，不走检索生成
@@ -283,12 +298,18 @@ def ask(
                     top_k=top_k,
                     use_live_tools=use_live_tools,
                     timings_ms=timings_ms,
+                    query_reformulation_mode="guarded",
                 ),
                 citation_check={"ok": True, "has_citations": False, "reason": "dosage_request"},
                 timings_ms=timings_ms,
             )
         rewrite_started = perf_counter()
-        rewritten = rewrite_nutrition_query(question)
+        if settings.rag_use_llm_query_rewrite:
+            rewritten = rewrite_nutrition_query(question)
+            rewrite_mode = "llm"
+        else:
+            rewritten = _lexical_query_rewrite(question, track)
+            rewrite_mode = "lexical"
         timings_ms["query_reformulation_ms"] = round(
             (perf_counter() - rewrite_started) * 1000, 1
         )
@@ -296,7 +317,12 @@ def ask(
         prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
     else:
         rewrite_started = perf_counter()
-        rewritten = rewrite_clinical_query(question)
+        if settings.rag_use_llm_query_rewrite:
+            rewritten = rewrite_clinical_query(question)
+            rewrite_mode = "llm"
+        else:
+            rewritten = _lexical_query_rewrite(question, track)
+            rewrite_mode = "lexical"
         timings_ms["query_reformulation_ms"] = round(
             (perf_counter() - rewrite_started) * 1000, 1
         )
@@ -309,7 +335,7 @@ def ask(
         top_k=top_k,
         prefer_levels=prefer,
         boost_tags=boost,
-        use_llm_rerank=get_settings().rag_use_llm_rerank,
+        use_llm_rerank=settings.rag_use_llm_rerank,
     )
     if use_live_tools:
         contexts = _live_augment(rewritten, contexts)[: top_k + 2]
@@ -337,6 +363,7 @@ def ask(
                 top_k=top_k,
                 use_live_tools=use_live_tools,
                 timings_ms=timings_ms,
+                query_reformulation_mode=rewrite_mode,
             ),
             citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
             timings_ms=timings_ms,
@@ -383,6 +410,7 @@ def ask(
             top_k=top_k,
             use_live_tools=use_live_tools,
             timings_ms=timings_ms,
+            query_reformulation_mode=rewrite_mode,
         ),
         citation_check=check,
         timings_ms=timings_ms,
