@@ -125,32 +125,88 @@ def _resolve_track(model: str) -> str:
     )
 
 
-def _source_footer(citations: list[Citation]) -> str:
-    """把后端 RAG 的证据映射显示在 Open WebUI 的回答末尾。"""
+def _single_line(value: Any, fallback: str = "") -> str:
+    """把证据元数据压成一行，避免文献字段破坏 Open WebUI Markdown。"""
 
-    if not citations:
+    text = str(value or fallback).replace("\r", " ").replace("\n", " ").strip()
+    return " ".join(text.split())
+
+
+def _source_footer(
+    citations: list[Citation],
+    *,
+    retrieval: dict[str, Any] | None = None,
+    citation_check: dict[str, Any] | None = None,
+) -> str:
+    """把旧证据台的证据面板信息转成 Open WebUI 可稳定渲染的 Markdown。"""
+
+    retrieval = retrieval or {}
+    citation_check = citation_check or {}
+    if not citations and not retrieval:
         return ""
-    lines = [
-        "\n\n---\n### 证据来源",
-        "回答中的 `[n]` 与本次后端检索采用的证据一一对应：",
-    ]
-    for citation in citations:
-        title = citation.title.strip() or citation.doc_id.strip() or "未命名来源"
-        metadata = [citation.evidence_level or "other", citation.source or "unknown"]
-        if citation.year:
-            metadata.append(str(citation.year))
-        lines.append(f"- [{citation.index}] {title}（{'，'.join(metadata)}）")
-        if citation.url.strip():
-            lines.append(f"  原文：{citation.url.strip()}")
+
+    lines = ["\n\n---\n### 证据面板"]
+    retrieved_count = retrieval.get("retrieved_count")
+    if retrieved_count is not None:
+        lines.append(f"- 本次检索：{retrieved_count} 条证据")
+    rewritten_query = _single_line(retrieval.get("rewritten_query"))
+    if rewritten_query:
+        lines.append(f"- 改写查询：`{rewritten_query}`")
+    sources = retrieval.get("sources") or {}
+    if isinstance(sources, dict) and sources:
+        source_summary = "，".join(
+            f"{_single_line(name, 'unknown')} {count} 条" for name, count in sources.items()
+        )
+        lines.append(f"- 来源分布：{source_summary}")
+    levels = retrieval.get("evidence_levels") or {}
+    if isinstance(levels, dict) and levels:
+        level_summary = "，".join(
+            f"{_single_line(name, 'other')} {count} 条" for name, count in levels.items()
+        )
+        lines.append(f"- 证据等级：{level_summary}")
+
+    if citations:
+        lines.extend(
+            [
+                "",
+                "### 证据来源",
+                "回答中的 `[n]` 与本次后端检索采用的证据一一对应；摘要用于快速判断，原文仍需人工核对：",
+            ]
+        )
+        for citation in citations:
+            title = _single_line(citation.title, citation.doc_id or "未命名来源")
+            metadata = [
+                _single_line(citation.evidence_level, "other"),
+                _single_line(citation.source, "unknown"),
+            ]
+            if citation.year:
+                metadata.append(str(citation.year))
+            lines.append(f"- **[{citation.index}] {title}**（{'，'.join(metadata)}）")
+            snippet = _single_line(citation.snippet, "暂无摘要片段")
+            lines.append(f"  摘要：{snippet}")
+            if citation.url.strip():
+                lines.append(f"  原文：[打开原始来源](<{citation.url.strip()}>)")
+
+    if citation_check:
+        checked = "已通过" if citation_check.get("ok", True) else "需复核"
+        used = citation_check.get("used_brackets") or []
+        used_text = "、".join(f"[{number}]" for number in used)
+        suffix = f"；本次使用 {used_text}" if used_text else ""
+        lines.extend(["", f"### 引用校验", f"- 状态：{checked}{suffix}"])
     return "\n".join(lines)
 
 
 def _render_rag_answer(result: AskResponse) -> str:
-    """渲染回答，并保留从回答到检索证据的可见追踪链。"""
+    """渲染回答，并保留旧证据台的来源卡片与检索摘要。"""
 
     answer = result.answer.strip() or "当前没有可展示的回答。"
-    if result.citations and "### 证据来源" not in answer:
-        answer += _source_footer(result.citations)
+    contexts = result.contexts or result.citations
+    if contexts or result.retrieval:
+        answer += _source_footer(
+            contexts,
+            retrieval=result.retrieval,
+            citation_check=result.citation_check,
+        )
     return answer
 
 

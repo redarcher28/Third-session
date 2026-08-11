@@ -128,7 +128,8 @@ synthesis → citation validation`。差异由系统预置 Prompt 和赛道配�
 
 `BYPASS_EMBEDDING_AND_RETRIEVAL=true` 只关闭 Open WebUI 自己的重复 Embedding/RAG；它
 不会关闭本项目的 `HybridRetriever`。这样一次提问只经过一条可追踪的 RAG 链路，回答
-末尾的“证据来源”会把 `[n]` 映射回本次检索到的标题、证据等级、年份和原文链接。
+末尾的“证据面板”会把 `[n]` 映射回本次检索到的标题、证据等级、年份、摘要片段和原文链接，
+同时显示改写查询、来源/证据等级分布与引用校验状态。
 
 Open WebUI 的项目化信息通过 [`scripts/configure_openwebui.py`](scripts/configure_openwebui.py)
 合并：旧证据台的“双赛道纪律”、示例问题和“先看证据，再形成答案”会显示在主界面；

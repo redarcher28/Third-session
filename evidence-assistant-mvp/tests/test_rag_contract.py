@@ -137,7 +137,12 @@ class RagContractTests(unittest.TestCase):
             contexts=[citation],
             track="clinical",
             prompt_version="test-version",
-            retrieval={"retrieved_count": 1},
+            retrieval={
+                "retrieved_count": 1,
+                "rewritten_query": "hypertension guideline long-term management",
+                "sources": {"local": 1},
+                "evidence_levels": {"guideline": 1},
+            },
             citation_check={"ok": True, "used_brackets": [1]},
         )
         request = OpenAIChatRequest(
@@ -157,8 +162,13 @@ class RagContractTests(unittest.TestCase):
         self.assertIsInstance(payload, dict)
         content = payload["choices"][0]["message"]["content"]  # type: ignore[index]
         self.assertIn("[1]", content)
+        self.assertIn("### 证据面板", content)
         self.assertIn("### 证据来源", content)
         self.assertIn("高血压管理指南摘要", content)
+        self.assertIn("摘要：指南指出，长期管理需要结合血压控制目标与整体心血管风险。", content)
+        self.assertIn("改写查询：`hypertension guideline long-term management`", content)
+        self.assertIn("来源分布：local 1 条", content)
+        self.assertIn("### 引用校验", content)
         self.assertIn("https://example.test/hypertension-guideline", content)
         mocked_ask.assert_called_once_with(
             "高血压为什么有时需要长期管理？",
