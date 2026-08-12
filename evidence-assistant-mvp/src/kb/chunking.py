@@ -159,6 +159,12 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
         for c in chunks
         if c.record_type == "trial_registry" and c.evidence_level == "rct"
     ]
+    missing_public_url = [
+        c.chunk_id
+        for c in chunks
+        if not (c.url or "").strip().lower().startswith("http")
+    ]
+    non_citable = [c.chunk_id for c in chunks if not c.citation_eligible]
     report = {
         "ok": not (
             missing_doc_id
@@ -173,6 +179,8 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
         "missing_doc_id": len(missing_doc_id),
         "missing_title": len(missing_title),
         "missing_url": len(missing_url),
+        "missing_public_url": len(missing_public_url),
+        "non_citable_count": len(non_citable),
         "missing_text": len(missing_text),
         "missing_locator": len(missing_locator),
         "invalid_trial_rct": len(invalid_trial_rct),

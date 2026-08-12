@@ -81,6 +81,11 @@ def citation_display_fields(
     return full, snippet
 
 
+def filter_citable_contexts(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """仅保留可作为正文引用的证据（citation_eligible=True）。"""
+    return [c for c in contexts if c.get("citation_eligible", True)]
+
+
 def context_to_citation_kwargs(context: dict[str, Any], index: int) -> dict[str, Any]:
     """从检索上下文 dict 构造 Citation 字段（含完整 text 与句子对齐 snippet）。"""
     raw_text = str(context.get("text") or "")
@@ -104,4 +109,5 @@ def context_to_citation_kwargs(context: dict[str, Any], index: int) -> dict[str,
         "snippet": snippet,
         "record_type": str(context.get("record_type") or "other"),
         "trial_status": str(context.get("trial_status") or ""),
+        "citation_eligible": bool(context.get("citation_eligible", True)),
     }

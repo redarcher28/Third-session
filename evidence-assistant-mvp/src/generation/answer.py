@@ -12,7 +12,7 @@ from typing import Any
 
 from src.llm import get_llm
 from src.models import Citation
-from src.text_utils import context_to_citation_kwargs, truncate_at_sentence
+from src.text_utils import context_to_citation_kwargs, filter_citable_contexts, truncate_at_sentence
 from src.tracks.prompt_profiles import build_synthesis_messages
 
 
@@ -68,10 +68,11 @@ def format_context_block(citations: list[Citation]) -> str:
     lines = []
     for c in citations:
         year = c.year or "n/a"
+        body = truncate_at_sentence((c.text or c.snippet or ""), 800, min_keep=120)
         lines.append(
             f"[{c.index}] ({c.evidence_level}) {c.title} | {c.source} | {year} | {c.doc_id}\n"
             f"URL: {c.url}\n"
-            f"{c.snippet}"
+            f"{body}"
         )
     return "\n\n".join(lines)
 
@@ -112,9 +113,16 @@ def generate_answer(
             - citations (list[Citation]): 引用列表
             - refused (bool): 是否拒答
     """
-    citations = contexts_to_citations(contexts)
-    if not citations:
-        return REFUSAL_TEMPLATE + DISCLAIMER, [], True
+    citable = filter_citable_contexts(contexts)
+    if not citable:
+        return (
+            "当前检索到的证据均不可作为可核验的外部引用（如本地无外链文档）。"
+            "请在证据面板查看检索片段，或补充带公开链接的文献后重试。"
+            + DISCLAIMER,
+            [],
+            True,
+        )
+    citations = contexts_to_citations(citable)
 
     context_block = format_context_block(citations)
     messages = build_synthesis_messages(
@@ -164,7 +172,6 @@ def generate_answer(
         answer = answer.rstrip() + DISCLAIMER
         if stream_callback:
             stream_callback(DISCLAIMER)
-    answer = append_reference_section_if_needed(answer, citations)
     return answer, citations, False
 
 
@@ -220,44 +227,53 @@ def compute_faithfulness_proxy(
     answer: str,
     contexts: list[dict[str, Any]],
 ) -> float:
-    """
-    【待完善】计算轻量忠实度代理分数（无需完整 Ragas 也可用）。
+    """轻量忠实度代理：正文词元与证据重叠比例，并小幅奖励正文引用。"""
+    from src.tools.cite_check import answer_body_for_citation_check
 
-    参数:
-        answer: 模型回答。
-        contexts: 证据块列表。
-
-    返回:
-        float: 0~1，越高表示回答用词与证据重叠/支撑越好。
-
-    作用:
-        为评测增加可量化的「是否忠于检索内容」指标。
-    """
-    raise NotImplementedError("待队员实现：compute_faithfulness_proxy")
+    body = answer_body_for_citation_check(answer)
+    if not body.strip() or not contexts:
+        return 0.0
+    body_tokens = set(re.findall(r"[\w\u4e00-\u9fff]{2,}", body.lower()))
+    if not body_tokens:
+        return 0.0
+    evidence_tokens: set[str] = set()
+    for ctx in contexts[:8]:
+        blob = f"{ctx.get('title') or ''} {ctx.get('text') or ''}".lower()
+        evidence_tokens.update(re.findall(r"[\w\u4e00-\u9fff]{2,}", blob))
+    if not evidence_tokens:
+        return 0.0
+    overlap = len(body_tokens & evidence_tokens) / len(body_tokens)
+    cite_bonus = 0.12 if extract_citation_indices(body) else 0.0
+    return round(min(1.0, overlap + cite_bonus), 3)
 
 
 def enforce_citation_density(
     answer: str,
-    min_cites: int = 2,
+    min_cites: int = 1,
 ) -> bool:
-    """
-    【待完善】检查回答是否达到最低引用密度要求。
-
-    参数:
-        answer: 模型回答。
-        min_cites: 至少应出现的不同 [n] 数量。
-
-    返回:
-        bool: True 表示满足最低引用要求。
-
-    作用:
-        防止「空口结论」；可在流水线中触发重生成。
-    """
-    raise NotImplementedError("待队员实现：enforce_citation_density")
+    """检查正文是否至少出现 min_cites 个不同 [n] 引用。"""
+    body = answer
+    disclaimer = DISCLAIMER.strip()
+    if disclaimer and disclaimer in body:
+        body = body[: body.rfind(disclaimer)].rstrip()
+    for marker in ("**参考文献**", "\n参考文献"):
+        idx = body.find(marker)
+        if idx >= 0:
+            body = body[:idx].rstrip()
+    return len(extract_citation_indices(body)) >= min_cites
 
 
-def format_reference_section(citations: list[Citation]) -> str:
-    """按统一中文样式生成文末「参考文献」段落。"""
+def format_reference_section(
+    citations: list[Citation],
+    *,
+    used_indices: list[int] | None = None,
+) -> str:
+    """按统一中文样式生成文末「参考文献」段落（默认仅列出正文实际使用的编号）。"""
+    if not citations:
+        return ""
+    if used_indices is not None:
+        allowed = set(used_indices)
+        citations = [c for c in citations if c.index in allowed]
     if not citations:
         return ""
     lines = ["\n\n---\n**参考文献**"]
@@ -287,14 +303,44 @@ def format_reference_section(citations: list[Citation]) -> str:
     return "\n".join(lines)
 
 
-def append_reference_section_if_needed(answer: str, citations: list[Citation]) -> str:
-    """在回答末尾追加参考文献块（若尚未包含且确有证据条目）。"""
+def append_reference_section_if_needed(
+    answer: str,
+    citations: list[Citation],
+    *,
+    used_indices: list[int] | None = None,
+) -> str:
+    """在回答末尾追加参考文献块（仅包含正文实际引用的条目）。"""
     if not citations or "参考文献" in answer:
         return answer
-    section = format_reference_section(citations)
+    section = format_reference_section(citations, used_indices=used_indices)
+    if not section.strip():
+        return answer
     disclaimer = DISCLAIMER.strip()
     if disclaimer and disclaimer in answer:
         idx = answer.rfind(disclaimer)
         if idx >= 0:
             return answer[:idx].rstrip() + section + "\n\n" + answer[idx:]
     return answer.rstrip() + section
+
+
+def finalize_grounded_answer(
+    answer: str,
+    citations: list[Citation],
+    check: dict[str, Any],
+) -> tuple[str, list[Citation], dict[str, Any]]:
+    """引用校验通过后，仅追加正文实际使用的参考文献。"""
+    if not check.get("ok"):
+        check = {**check, "reason": check.get("reason") or "citation_check_failed"}
+        return answer, [], check
+    valid_used = list(check.get("valid_used_brackets") or [])
+    used_citations = [c for c in citations if c.index in set(valid_used)]
+    if used_citations:
+        answer = append_reference_section_if_needed(
+            answer,
+            citations,
+            used_indices=valid_used,
+        )
+    elif citations:
+        check = {**check, "ok": False, "reason": "missing_body_citations"}
+        return answer, [], check
+    return answer, used_citations, check

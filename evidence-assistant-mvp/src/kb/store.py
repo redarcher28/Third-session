@@ -23,14 +23,18 @@ from src.models import Chunk
 logger = logging.getLogger(__name__)
 
 COLLECTION = "evidence_chunks"
+COLLECTION_STAGING = "evidence_chunks_staging"
 BM25_CACHE_NAME = "bm25_corpus.json"
+# 检索侧 BM25 与统计导出应读取全量语料，避免「库有 11k、只检 5k」
+BM25_RETRIEVAL_LIMIT = 100_000
+BM25_EXPORT_LIMIT = 100_000
 
 
 def _bm25_cache_path() -> Path:
     return get_settings().processed_path / BM25_CACHE_NAME
 
 
-def _load_bm25_cache(limit: int = 5000) -> list[dict[str, Any]]:
+def _load_bm25_cache(limit: int = BM25_RETRIEVAL_LIMIT) -> list[dict[str, Any]]:
     path = _bm25_cache_path()
     if not path.exists():
         return []
@@ -56,40 +60,69 @@ def export_bm25_cache(docs: list[dict[str, Any]]) -> Path:
 class EvidenceStore:
     """证据向量库封装。"""
 
-    def __init__(self) -> None:
+    def __init__(self, *, collection_name: str = COLLECTION) -> None:
         """打开（或创建）持久化 Chroma 集合。"""
         settings = get_settings()
         settings.chroma_path.mkdir(parents=True, exist_ok=True)
+        self._collection_name = collection_name
         self._client = chromadb.PersistentClient(
             path=str(settings.chroma_path),
             settings=ChromaSettings(anonymized_telemetry=False),
         )
         self._col = self._client.get_or_create_collection(
-            name=COLLECTION,
+            name=collection_name,
             metadata={"hnsw:space": "cosine"},
         )
 
     def reset(self) -> None:
         """删除并重建集合（建库脚本默认会调用）。"""
+        name = self._collection_name
         try:
-            self._client.delete_collection(COLLECTION)
+            self._client.delete_collection(name)
         except Exception:
             pass
         self._col = self._client.get_or_create_collection(
-            name=COLLECTION,
+            name=name,
             metadata={"hnsw:space": "cosine"},
         )
 
+    def chroma_count(self) -> tuple[int, bool]:
+        """返回 (条数, 是否来自 Chroma 真读)。False 表示读取失败。"""
+        try:
+            return self._col.count(), True
+        except Exception:
+            return 0, False
+
+    def retrieval_count(self) -> int:
+        """BM25 侧车/cache 可见条数（Chroma 不可用时的检索规模）。"""
+        try:
+            return len(self.all_chunks_for_bm25(limit=BM25_RETRIEVAL_LIMIT))
+        except Exception:
+            return len(_load_bm25_cache(limit=BM25_RETRIEVAL_LIMIT))
+
+    def count_detail(self) -> dict[str, Any]:
+        """区分 Chroma 真 count 与 BM25 回退 count。"""
+        n, from_chroma = self.chroma_count()
+        if from_chroma:
+            return {"count": n, "source": "chroma", "chroma_ok": True}
+        cached = _load_bm25_cache(limit=BM25_EXPORT_LIMIT)
+        return {
+            "count": len(cached),
+            "source": "bm25_cache",
+            "chroma_ok": False,
+        }
+
     def count(self) -> int:
         """返回当前集合中的向量条数；Chroma 异常时回退 BM25 缓存条数。"""
-        try:
-            return self._col.count()
-        except Exception as exc:
-            cached = _load_bm25_cache(limit=100000)
-            if cached:
-                logger.warning("Chroma count failed (%s); using BM25 cache (%d)", type(exc).__name__, len(cached))
-                return len(cached)
-            raise
+        detail = self.count_detail()
+        if detail["source"] == "bm25_cache" and detail["count"]:
+            logger.warning(
+                "Chroma count failed; using BM25 cache (%d)",
+                detail["count"],
+            )
+        if detail["count"] == 0 and not detail["chroma_ok"]:
+            raise RuntimeError("Chroma count failed and BM25 cache is empty")
+        return int(detail["count"])
 
     def upsert_chunks(self, chunks: list[Chunk], batch_size: int = 32) -> int:
         """
@@ -202,7 +235,7 @@ class EvidenceStore:
             )
         return out
 
-    def all_chunks_for_bm25(self, limit: int = 5000) -> list[dict[str, Any]]:
+    def all_chunks_for_bm25(self, limit: int = BM25_RETRIEVAL_LIMIT) -> list[dict[str, Any]]:
         """
         导出集合中的文本块，供 BM25 关键词检索使用。
 
@@ -241,6 +274,127 @@ class EvidenceStore:
             raise
 
 
+class BuildValidationError(ValueError):
+    """建库候选数据未通过硬校验，禁止覆盖正式库。"""
+
+
+def _write_index_manifest(chunk_count: int) -> None:
+    import importlib.metadata
+
+    manifest = {
+        "chunk_count": chunk_count,
+        "collection": COLLECTION,
+        "chromadb_version": importlib.metadata.version("chromadb"),
+    }
+    path = get_settings().processed_path / "index_manifest.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    logger.info("Index manifest -> %s", path)
+
+
+def validate_build_chunks(
+    chunks: list[Chunk],
+    *,
+    previous_count: int | None = None,
+    min_absolute: int = 100,
+    min_ratio: float = 0.5,
+) -> dict[str, Any]:
+    """建库前硬校验：溯源失败或数量异常骤降则拒绝发布。"""
+    from src.kb.chunking import validate_chunk_traceability
+
+    trace = validate_chunk_traceability(chunks)
+    if not trace["ok"]:
+        raise BuildValidationError(f"chunk traceability failed: {trace}")
+    if len(chunks) < min_absolute:
+        raise BuildValidationError(f"too few chunks to publish: {len(chunks)} < {min_absolute}")
+    if previous_count and previous_count >= min_absolute:
+        if len(chunks) < int(previous_count * min_ratio):
+            raise BuildValidationError(
+                f"chunk count dropped suspiciously: {len(chunks)} vs previous {previous_count}"
+            )
+    return trace
+
+
+def _copy_collection_with_embeddings(
+    source: EvidenceStore,
+    target: EvidenceStore,
+    *,
+    batch_size: int = 128,
+) -> int:
+    """将 source 集合（含 embedding）复制到 target。"""
+    res = source._col.get(include=["embeddings", "documents", "metadatas"])
+    ids = res.get("ids") or []
+    if not ids:
+        return 0
+    total = 0
+    for i in range(0, len(ids), batch_size):
+        sl = slice(i, i + batch_size)
+        target._col.upsert(
+            ids=ids[sl],
+            embeddings=res["embeddings"][sl],
+            documents=res["documents"][sl],
+            metadatas=res["metadatas"][sl],
+        )
+        total += len(ids[sl])
+    return total
+
+
+def atomic_publish_chunks(
+    chunks: list[Chunk],
+    *,
+    previous_count: int | None = None,
+) -> int:
+    """
+    在 staging 集合完成写入与探针，通过后原子切换为正式库；失败则保留旧库。
+    """
+    from src.kb.health import probe_chroma
+
+    validate_build_chunks(chunks, previous_count=previous_count)
+    staging = EvidenceStore(collection_name=COLLECTION_STAGING)
+    staging.reset()
+    n = staging.upsert_chunks(chunks)
+    staging_probe = probe_chroma(staging)
+    if not staging_probe["chroma_ok"] or staging_probe["store_count"] != n:
+        staging.reset()
+        raise BuildValidationError(f"staging Chroma probe failed: {staging_probe}")
+
+    main = EvidenceStore()
+    new_ids = {c.chunk_id for c in chunks}
+    try:
+        copied = _copy_collection_with_embeddings(staging, main)
+        if copied != n:
+            raise BuildValidationError(f"staging->main copy mismatch: copied={copied} expected={n}")
+
+        main_probe = probe_chroma(main)
+        if not main_probe["chroma_ok"] or main_probe["store_count"] < n:
+            raise BuildValidationError(f"main collection probe failed after publish: {main_probe}")
+
+        try:
+            existing_ids = main._col.get(include=[]).get("ids") or []
+            stale = [cid for cid in existing_ids if cid not in new_ids]
+            if stale:
+                main._col.delete(ids=stale)
+                logger.info("Pruned %d stale chunks after atomic publish", len(stale))
+        except Exception as exc:
+            logger.warning("Stale prune after publish skipped: %s", exc)
+    except BuildValidationError:
+        try:
+            if new_ids:
+                main._col.delete(ids=list(new_ids))
+        except Exception as exc:
+            logger.warning("Rollback of partial publish failed: %s", exc)
+        raise
+    finally:
+        staging.reset()
+    try:
+        export_bm25_cache(main.all_chunks_for_bm25(limit=BM25_EXPORT_LIMIT))
+    except Exception as exc:
+        logger.warning("BM25 cache export skipped after publish: %s", exc)
+    _write_index_manifest(n)
+    logger.info("Atomic publish complete: %d chunks (main count=%d)", n, main.count())
+    return n
+
+
 # ---------------------------------------------------------------------------
 # 向量库运维与重建
 # ---------------------------------------------------------------------------
@@ -248,7 +402,7 @@ class EvidenceStore:
 
 def _existing_items(store: EvidenceStore) -> dict[str, dict]:
     """导出集合中现有 chunk_id -> {text, doc_id} 映射，供增量重建比对与剪枝。"""
-    items = store.all_chunks_for_bm25(limit=100000)
+    items = store.all_chunks_for_bm25(limit=BM25_EXPORT_LIMIT)
     return {
         m["chunk_id"]: {"text": m.get("text", ""), "doc_id": m.get("doc_id", "")}
         for m in items
@@ -284,26 +438,39 @@ def rebuild_collection_from_processed(reset: bool = True) -> int:
     chunks = merge_tiny_chunks(docs_to_chunks(docs))
     store = EvidenceStore()
     if reset:
-        store.reset()
-    else:
-        full_chunks = chunks  # 全量快照：用于判断「文档是否还存在于 processed」
-        existing = _existing_items(store)
-        before = len(full_chunks)
-        chunks = [c for c in full_chunks if existing.get(c.chunk_id, {}).get("text") != c.text]
-        if chunks:
-            logger.info("Incremental rebuild: %d changed/new chunks (skipped %d unchanged)", len(chunks), before - len(chunks))
-        # 注意：live_doc_ids 必须基于全量 chunk 计算，未变化的文档不能误判为已删除
-        live_doc_ids = {c.doc_id for c in full_chunks}
-        stale = [cid for cid, m in existing.items() if m.get("doc_id") not in live_doc_ids]
-        if stale:
-            store._col.delete(ids=stale)
-            logger.info("Pruned %d stale chunks (docs removed from processed)", len(stale))
-        if not chunks:
-            logger.info("Incremental rebuild: nothing changed, store untouched (count=%d)", store.count())
-            return 0
+        try:
+            previous_count = store.count()
+        except Exception:
+            previous_count = None
+        return atomic_publish_chunks(chunks, previous_count=previous_count)
+
+    full_chunks = chunks  # 全量快照：用于判断「文档是否还存在于 processed」
+    validate_build_chunks(full_chunks, previous_count=store.count())
+    existing = _existing_items(store)
+    before = len(full_chunks)
+    chunks = [c for c in full_chunks if existing.get(c.chunk_id, {}).get("text") != c.text]
+    if chunks:
+        logger.info(
+            "Incremental rebuild: %d changed/new chunks (skipped %d unchanged)",
+            len(chunks),
+            before - len(chunks),
+        )
+    live_doc_ids = {c.doc_id for c in full_chunks}
+    stale = [cid for cid, m in existing.items() if m.get("doc_id") not in live_doc_ids]
+    if stale:
+        snapshot_count = store.count()
+        if snapshot_count >= 100 and len(stale) > int(snapshot_count * 0.5):
+            raise BuildValidationError(
+                f"incremental prune blocked: would delete {len(stale)}/{snapshot_count} chunks"
+            )
+        store._col.delete(ids=stale)
+        logger.info("Pruned %d stale chunks (docs removed from processed)", len(stale))
+    if not chunks:
+        logger.info("Incremental rebuild: nothing changed, store untouched (count=%d)", store.count())
+        return 0
     n = store.upsert_chunks(chunks)
     try:
-        export_bm25_cache(store.all_chunks_for_bm25(limit=100000))
+        export_bm25_cache(store.all_chunks_for_bm25(limit=BM25_EXPORT_LIMIT))
     except Exception as exc:
         logger.warning("BM25 cache export skipped: %s", exc)
     logger.info("Rebuilt knowledge base: %d chunks upserted (store count=%d)", n, store.count())
@@ -329,7 +496,7 @@ def export_store_stats(out_path: Path | None = None) -> dict:
         演示与报告中展示知识库规模与构成。
     """
     store = EvidenceStore()
-    items = store.all_chunks_for_bm25(limit=100000)
+    items = store.all_chunks_for_bm25(limit=BM25_EXPORT_LIMIT)
     by_source = Counter(m.get("source", "?") for m in items)
     by_level = Counter(m.get("evidence_level", "other") for m in items)
     by_year = Counter(m.get("year", "unknown") for m in items)
@@ -341,6 +508,18 @@ def export_store_stats(out_path: Path | None = None) -> dict:
         "by_level": dict(by_level),
         "by_year": dict(sorted(by_year.items(), key=lambda kv: (kv[0] == "unknown", str(kv[0])))),
     }
+    try:
+        from src.kb.health import kb_health_report
+
+        health = kb_health_report()
+        stats["kb_status"] = health["status"]
+        stats["chroma_ok"] = health["chroma"]["chroma_ok"]
+        stats["degraded_reasons"] = health["degraded_reasons"]
+        stats["retrieval_indexed_count"] = health["retrieval"]["bm25_indexed_count"]
+        stats["bm25_cache_total"] = health["retrieval"]["bm25_cache_total"]
+        stats["bm25_index_complete"] = health["retrieval"]["bm25_index_complete"]
+    except Exception:
+        pass
     if out_path:
         out_path.parent.mkdir(parents=True, exist_ok=True)
         import json

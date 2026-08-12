@@ -11,15 +11,22 @@ import re
 from typing import Any
 
 from src.config import get_settings
-from src.generation.answer import DISCLAIMER, append_reference_section_if_needed, generate_answer
+from src.generation.answer import (
+    DISCLAIMER,
+    REFUSAL_TEMPLATE,
+    finalize_grounded_answer,
+    generate_answer,
+)
+from src.tracks.pipeline import _build_qualified_refusal, _is_low_relevance, build_retrieval_summary, reformulate_query
+from src.tracks.clinical import CLINICAL_PERSONA, CLINICAL_STYLE, PREFER_LEVELS
 from src.kb.chunking import docs_to_chunks
 from src.llm import get_llm
 from src.models import Citation
-from src.text_utils import context_to_citation_kwargs
+from src.text_utils import context_to_citation_kwargs, filter_citable_contexts
 from src.retrieval.hybrid import HybridRetriever
-from src.tools.cite_check import strip_invalid_claims, verify_citations
+from src.tools.citation_policy import apply_citation_failure_policy
+from src.tools.cite_check import verify_citations
 from src.tools.live_search import search_clinical_trials, search_pubmed
-from src.tracks.clinical import CLINICAL_PERSONA, CLINICAL_STYLE, PREFER_LEVELS
 from src.tracks.nutrition import (
     BOOST_TAGS,
     NUTRITION_DOSAGE_REFUSAL,
@@ -29,7 +36,6 @@ from src.tracks.nutrition import (
     flag_dosage_in_answer,
     simplify_medical_terms,
 )
-from src.tracks.pipeline import build_retrieval_summary, reformulate_query
 from src.tracks.prompt_profiles import PROMPT_VERSION
 
 logger = logging.getLogger(__name__)
@@ -45,7 +51,7 @@ REACT_SYSTEM = """你是「OpenEvidence 风格证据智能助手」的 ReAct 推
    输入 JSON: {{"query": "检索词", "retmax": 3}}
 3. search_trials — 在线 ClinicalTrials 补检索
    输入 JSON: {{"condition": "Hypertension", "page_size": 2}}
-4. finish — 结束推理并给出最终回答（必须基于已 Observation 中的证据，带 [n] 引用）
+4. finish — 检索阶段结束信号（不要在 Action Input 里写最终医学回答；系统会基于 Observation 中的证据统一生成带引用的回答）
    输入 JSON: {{"answer": "完整中文回答"}}
 
 严格按以下格式输出（不要省略标签名）：
@@ -54,7 +60,8 @@ Action: （工具名，四选一）
 Action Input: （单行 JSON）
 
 规则：
-- 先检索再 finish；证据不足时 finish 中说明「当前知识库证据不足」。
+- 先 retrieve_evidence 再 finish；finish 仅表示「检索完成」，不是直接回答用户。
+- 证据不足时 finish 前先说明缺口；最终拒答由系统统一生成。
 - 禁止编造 PMID/NCT/文献；引用编号必须对应 Observation 中列出的 [n]。
 - 本系统不构成医疗建议；finish 的回答末尾需提醒引用需人工复核。
 - 赛道人格：{persona_hint}
@@ -115,6 +122,7 @@ class ReactEvidenceAgent:
         self.steps: list[dict[str, Any]] = []
         self.rewritten_query = ""
         self.query_reformulation_mode = "lexical"
+        self.did_retrieve = False
 
     def _persona(self) -> tuple[str, str]:
         if self.track == "nutrition":
@@ -122,6 +130,7 @@ class ReactEvidenceAgent:
         return CLINICAL_PERSONA, CLINICAL_STYLE
 
     def _retrieve(self, query: str, top_k: int | None = None) -> str:
+        self.did_retrieve = True
         k = top_k if top_k is not None else self.top_k
         prefer = PREFER_LEVELS if self.track == "clinical" else None
         boost = BOOST_TAGS if self.track == "nutrition" else None
@@ -140,6 +149,7 @@ class ReactEvidenceAgent:
         return _format_observation(hits, "本地知识库检索结果：\n")
 
     def _pubmed(self, query: str, retmax: int = 3) -> str:
+        self.did_retrieve = True
         try:
             docs = search_pubmed(query, retmax=retmax)
             chunks = [docs_to_chunks([d])[0].model_dump() for d in docs]
@@ -153,6 +163,7 @@ class ReactEvidenceAgent:
             return f"PubMed 检索失败：{e}"
 
     def _trials(self, condition: str, page_size: int = 2) -> str:
+        self.did_retrieve = True
         try:
             docs = search_clinical_trials(condition, page_size=page_size)
             chunks = [docs_to_chunks([d])[0].model_dump() for d in docs]
@@ -233,16 +244,14 @@ class ReactEvidenceAgent:
             }
         )
 
-        final_answer = ""
+        retrieval_done = False
         for step in range(MAX_STEPS):
             raw = llm.chat(thread, temperature=0.2, max_tokens=1200)
             thought, action, action_input = _parse_react(raw)
             if not action:
-                # 离线或格式异常：先做一次默认检索再兜底生成
-                if not self.contexts:
+                if not self.did_retrieve:
                     self._retrieve(rewritten or question)
                 break
-            obs = self._execute(action, action_input)
             step_rec = {
                 "step": step + 1,
                 "thought": thought,
@@ -251,10 +260,37 @@ class ReactEvidenceAgent:
                 "raw": raw,
             }
             if action == "finish":
-                final_answer = str(action_input.get("answer") or "")
-                step_rec["observation"] = "（完成）"
+                if not self.contexts:
+                    step_rec["observation"] = (
+                        "尚未检索到证据。请先 Action: retrieve_evidence，不可在无证据时 finish。"
+                    )
+                    self.steps.append(step_rec)
+                    thread.append({"role": "assistant", "content": raw})
+                    thread.append(
+                        {
+                            "role": "user",
+                            "content": f"Observation:\n{step_rec['observation']}\n\n请继续 Thought / Action。",
+                        }
+                    )
+                    continue
+                if not self.did_retrieve:
+                    step_rec["observation"] = (
+                        "尚未执行 retrieve_evidence。请先检索本地知识库后再 finish。"
+                    )
+                    self.steps.append(step_rec)
+                    thread.append({"role": "assistant", "content": raw})
+                    thread.append(
+                        {
+                            "role": "user",
+                            "content": f"Observation:\n{step_rec['observation']}\n\n请继续 Thought / Action。",
+                        }
+                    )
+                    continue
+                step_rec["observation"] = "（检索完成，转入受控生成）"
                 self.steps.append(step_rec)
+                retrieval_done = True
                 break
+            obs = self._execute(action, action_input)
             step_rec["observation"] = obs[:2000]
             self.steps.append(step_rec)
             thread.append({"role": "assistant", "content": raw})
@@ -263,26 +299,45 @@ class ReactEvidenceAgent:
         if self.use_live_tools and rewritten:
             self._pubmed(rewritten, retmax=3)
 
+        if not self.did_retrieve:
+            self._retrieve(rewritten or question)
+
         refused = False
         citations: list[Citation] = []
-        if not final_answer:
-            answer, citations, refused = generate_answer(
+        expect_levels = tuple(PREFER_LEVELS[:3]) if self.track == "clinical" else None
+        reject_reason = _is_low_relevance(question, self.contexts, expect_levels=expect_levels)
+
+        if reject_reason:
+            final_answer = _build_qualified_refusal(question, self.contexts, reject_reason) + DISCLAIMER
+            refused = True
+            check: dict[str, Any] = {
+                "ok": True,
+                "has_citations": False,
+                "body_has_citations": False,
+                "reason": reject_reason,
+            }
+        elif not self.contexts:
+            final_answer = REFUSAL_TEMPLATE + DISCLAIMER
+            refused = True
+            check = {"ok": True, "has_citations": False, "body_has_citations": False, "reason": "no_contexts"}
+        else:
+            final_answer, citations, refused = generate_answer(
                 question,
                 self.contexts,
                 system_persona=persona,
                 answer_style=style,
+                track=self.track,
             )
-            final_answer = answer
-        else:
-            citations = _contexts_to_citation_list(self.contexts)
-            if DISCLAIMER.strip() not in final_answer:
-                final_answer = final_answer.rstrip() + DISCLAIMER
-            refused = not self.contexts
-
-        check = verify_citations(final_answer, self.contexts)
-        final_answer = strip_invalid_claims(final_answer, check)
-        citations = _contexts_to_citation_list(self.contexts)
-        final_answer = append_reference_section_if_needed(final_answer, citations)
+            citable_contexts = filter_citable_contexts(self.contexts)
+            check = verify_citations(final_answer, citable_contexts)
+            if not refused:
+                final_answer, citations, check = apply_citation_failure_policy(
+                    final_answer, self.contexts, citations, check, refused=refused
+                )
+                if check.get("ok"):
+                    final_answer, citations, check = finalize_grounded_answer(
+                        final_answer, citations, check
+                    )
         if self.track == "nutrition" and not refused:
             final_answer = simplify_medical_terms(final_answer)
             if flag_dosage_in_answer(final_answer):

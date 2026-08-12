@@ -132,6 +132,58 @@ def classify_trial_registry(status: str) -> tuple[EvidenceLevel, bool]:
     return "other", False
 
 
+def has_public_locator(doc: EvidenceDoc) -> bool:
+    """是否存在可公开核验的外链或 DOI。"""
+    url = (doc.url or "").strip().lower()
+    if url.startswith("http://") or url.startswith("https://"):
+        return True
+    doi = (doc.doi or "").strip()
+    return bool(doi)
+
+
+def resolve_context_citation_eligible(item: dict[str, Any]) -> bool:
+    """检索结果运行时重算 citation_eligible，避免索引元数据过期。"""
+    source = str(item.get("source") or "")
+    record_type = str(item.get("record_type") or "")
+    if record_type == "trial_registry" or source == "clinicaltrials":
+        status = str(item.get("trial_status") or item.get("status") or "")
+        _, eligible = classify_trial_registry(status)
+        return eligible
+    url = str(item.get("url") or "").strip().lower()
+    if url.startswith("http://") or url.startswith("https://"):
+        return True
+    doi = str(item.get("doi") or "").strip()
+    if doi:
+        return True
+    if source == "wiki":
+        return False
+    if source == "local":
+        return False
+    if source in {"pubmed", "europepmc"}:
+        doc_id = str(item.get("doc_id") or "")
+        return doc_id.startswith("pmid:") or doc_id.startswith("pmc:")
+    return False
+
+
+def apply_citation_eligibility(doc: EvidenceDoc) -> EvidenceDoc:
+    """
+    区分「可检索」与「可对外引用」：
+    - 有 http(s) URL 或 DOI → 可引用；
+    - 本地/OCR 无外链 → 可检索但默认不可作对外核验引用。
+    """
+    if doc.source == "clinicaltrials":
+        return doc
+    if doc.source in {"pubmed", "europepmc"}:
+        doc.citation_eligible = has_public_locator(doc)
+    elif doc.source == "wiki":
+        doc.citation_eligible = (doc.url or "").strip().lower().startswith("http")
+    elif doc.source == "local":
+        doc.citation_eligible = has_public_locator(doc)
+    else:
+        doc.citation_eligible = has_public_locator(doc)
+    return doc
+
+
 def normalize_evidence_metadata(doc: EvidenceDoc) -> EvidenceDoc:
     """补全 record_type / source_locator，并修正试验注册误标为 rct 的历史数据。"""
     if not doc.source_locator.strip():
@@ -149,7 +201,6 @@ def normalize_evidence_metadata(doc: EvidenceDoc) -> EvidenceDoc:
     elif doc.source in {"pubmed", "europepmc"}:
         if doc.record_type == "other":
             doc.record_type = "published_article"
-        doc.citation_eligible = True
     elif doc.source == "wiki":
         doc.record_type = "wiki_page"
     elif doc.source == "local":
@@ -160,7 +211,7 @@ def normalize_evidence_metadata(doc: EvidenceDoc) -> EvidenceDoc:
 
     if not doc.source_locator.strip():
         doc.source_locator = doc.doc_id
-    return doc
+    return apply_citation_eligibility(doc)
 
 
 def normalize_retrieved_context(item: dict[str, Any]) -> dict[str, Any]:
@@ -177,8 +228,8 @@ def normalize_retrieved_context(item: dict[str, Any]) -> dict[str, Any]:
         status = str(item.get("trial_status") or "")
         _, eligible = classify_trial_registry(status)
         item["citation_eligible"] = eligible
-    elif "citation_eligible" not in item:
-        item["citation_eligible"] = True
+    else:
+        item["citation_eligible"] = resolve_context_citation_eligible(item)
     if not str(item.get("source_locator") or "").strip():
         item["source_locator"] = str(item.get("url") or item.get("doc_id") or item.get("chunk_id") or "")
     return item

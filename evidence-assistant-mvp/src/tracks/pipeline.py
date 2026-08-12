@@ -15,12 +15,14 @@ from time import perf_counter
 from typing import Any
 
 from src.config import get_settings
-from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer
+from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer, finalize_grounded_answer
 from src.kb.chunking import docs_to_chunks
 from src.models import AskResponse, Citation
 from src.text_utils import context_to_citation_kwargs
 from src.retrieval.hybrid import HybridRetriever
-from src.tools.cite_check import strip_invalid_claims, verify_citations
+from src.text_utils import filter_citable_contexts
+from src.tools.citation_policy import apply_citation_failure_policy
+from src.tools.cite_check import verify_citations
 from src.tools.live_search import search_clinical_trials, search_pubmed
 from src.tracks.clinical import (
     CLINICAL_PERSONA,
@@ -224,6 +226,14 @@ def _retrieval_summary(
     }
     if timings_ms:
         summary["timings_ms"] = dict(timings_ms)
+    try:
+        from src.kb.health import kb_health_report
+
+        health = kb_health_report()
+        summary["kb_status"] = health.get("status", "unknown")
+        summary["degraded_reasons"] = list(health.get("degraded_reasons") or [])
+    except Exception as exc:
+        logger.debug("kb health snapshot skipped for retrieval summary: %s", exc)
     return summary
 
 
@@ -401,15 +411,14 @@ def ask(
     )
     timings_ms["generation_ms"] = round((perf_counter() - generation_started) * 1000, 1)
     validation_started = perf_counter()
-    check = verify_citations(answer, contexts)
+    citable_contexts = filter_citable_contexts(contexts)
+    check = verify_citations(answer, citable_contexts)
     if not refused:
-        validated_answer = strip_invalid_claims(answer, check)
-        if stream_callback and validated_answer != answer:
-            if validated_answer.startswith(answer):
-                stream_callback(validated_answer[len(answer) :])
-            else:
-                stream_callback("\n\n" + validated_answer)
-        answer = validated_answer
+        answer, citations, check = apply_citation_failure_policy(
+            answer, contexts, citations, check, refused=refused
+        )
+        if check.get("ok"):
+            answer, citations, check = finalize_grounded_answer(answer, citations, check)
     # 营养赛道后处理：术语通俗化 + 药量防御警示（面向普通群众的产品边界）
     if not refused and track == "nutrition":
         # 术语替换需要看到完整回答；流式分支保留模型已经按赛道 Prompt

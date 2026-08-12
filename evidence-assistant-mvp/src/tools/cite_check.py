@@ -8,32 +8,49 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.generation.answer import extract_citation_indices
+from src.generation.answer import DISCLAIMER, extract_citation_indices
 
 
 PMID_RE = re.compile(r"\bPMID[:\s]*([0-9]{5,9})\b", re.I)
 NCT_RE = re.compile(r"\b(NCT\d{8})\b", re.I)
 DOC_RE = re.compile(r"\b((?:pmid|nct|epmc|local|wiki):[^\s\]，。；;,]+)", re.I)
+REF_SECTION_MARKERS = ("**参考文献**", "\n参考文献")
 
 
-def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, Any]:
+def split_answer_body(answer: str) -> tuple[str, str]:
+    """拆分模型正文与参考文献块。"""
+    for marker in REF_SECTION_MARKERS:
+        idx = answer.find(marker)
+        if idx >= 0:
+            start = answer.rfind("\n---", 0, idx)
+            cut = start if start >= 0 and idx - start < 40 else idx
+            return answer[:cut].rstrip(), answer[cut:].lstrip()
+    return answer, ""
+
+
+def answer_body_for_citation_check(answer: str) -> str:
+    """用于引用校验的正文（不含自动参考文献与免责声明）。"""
+    body, _ = split_answer_body(answer)
+    disclaimer = DISCLAIMER.strip()
+    if disclaimer and disclaimer in body:
+        body = body[: body.rfind(disclaimer)].rstrip()
+    return body
+
+
+def verify_citations(
+    answer: str,
+    contexts: list[dict[str, Any]],
+    *,
+    body_only: bool = True,
+) -> dict[str, Any]:
     """
     校验回答中的引用是否都能在当次证据中找到。
 
-    参数:
-        answer: 模型回答文本。
-        contexts: 当次检索证据列表。
-
-    返回:
-        dict: 校验明细，关键字段包括：
-            - ok (bool): 是否全部合法
-            - used_brackets (list[int]): 使用的 [n]
-            - invalid_brackets (list[int]): 越界编号
-            - fake_pmids / fake_ncts / fake_docs: 无法核实的标识
-            - has_citations (bool): 是否出现引用
+    默认只扫描模型正文，不把自动追加的「参考文献」段落算入。
     """
+    text = answer_body_for_citation_check(answer) if body_only else answer
     allowed_idx = set(range(1, len(contexts) + 1))
-    used = extract_citation_indices(answer)
+    used = extract_citation_indices(text)
     invalid_brackets = [i for i in used if i not in allowed_idx]
 
     context_ids: set[str] = set()
@@ -51,9 +68,9 @@ def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, A
         for m in NCT_RE.findall(str(c.get("url") or "") + " " + doc_id):
             context_ncts.add(m.upper())
 
-    claimed_pmids = PMID_RE.findall(answer)
-    claimed_ncts = [m.upper() for m in NCT_RE.findall(answer)]
-    claimed_docs = [m.lower() for m in DOC_RE.findall(answer)]
+    claimed_pmids = PMID_RE.findall(text)
+    claimed_ncts = [m.upper() for m in NCT_RE.findall(text)]
+    claimed_docs = [m.lower() for m in DOC_RE.findall(text)]
 
     fake_pmids = [p for p in claimed_pmids if p not in context_pmids]
     fake_ncts = [n for n in claimed_ncts if n not in context_ncts]
@@ -66,12 +83,21 @@ def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, A
         r"发表于《[^》]+》",
         r"et al\.",
     ]:
-        invent_phrases += len(re.findall(pat, answer))
+        invent_phrases += len(re.findall(pat, text))
 
-    ok = not invalid_brackets and not fake_pmids and not fake_ncts and not fake_docs
+    valid_used = [i for i in used if i in allowed_idx]
+    require_cites = bool(contexts)
+    ok = (
+        not invalid_brackets
+        and not fake_pmids
+        and not fake_ncts
+        and not fake_docs
+        and (bool(valid_used) if require_cites else True)
+    )
     return {
         "ok": ok,
         "used_brackets": used,
+        "valid_used_brackets": valid_used,
         "invalid_brackets": invalid_brackets,
         "claimed_pmids": claimed_pmids,
         "fake_pmids": fake_pmids,
@@ -79,6 +105,7 @@ def verify_citations(answer: str, contexts: list[dict[str, Any]]) -> dict[str, A
         "fake_ncts": fake_ncts,
         "fake_docs": fake_docs,
         "has_citations": bool(used),
+        "body_has_citations": bool(valid_used),
         "invent_phrase_hits": invent_phrases,
     }
 
@@ -99,6 +126,10 @@ def strip_invalid_claims(answer: str, check: dict[str, Any]) -> str:
     notes = []
     if check.get("invalid_brackets"):
         notes.append(f"无效引用编号: {check['invalid_brackets']}")
+    if not check.get("body_has_citations") and check.get("has_citations") is False:
+        notes.append("正文未出现合法 [n] 引用")
+    elif not check.get("body_has_citations"):
+        notes.append("正文缺少可核对的 [n] 引用")
     if check.get("fake_pmids"):
         notes.append(f"无法核实的 PMID: {check['fake_pmids']}")
     if check.get("fake_ncts"):
@@ -122,38 +153,15 @@ def repair_answer_with_valid_cites(
     contexts: list[dict[str, Any]],
     check: dict[str, Any],
 ) -> str:
-    """
-    【待完善】当引用校验失败时，基于合法证据重写回答中的引用部分。
+    from src.tools.citation_policy import repair_answer_with_valid_cites as _repair
 
-    参数:
-        answer: 原始生成回答。
-        contexts: 当次检索证据。
-        check: verify_citations 的返回结果。
-
-    返回:
-        str: 修复后的回答文本。
-
-    作用:
-        降低假引用残留，提升赛道三「假引用减少」指标表现。
-    """
-    raise NotImplementedError("待队员实现：repair_answer_with_valid_cites")
+    return _repair(answer, contexts, check)
 
 
 def detect_unsupported_claims(
     answer: str,
     contexts: list[dict[str, Any]],
 ) -> list[str]:
-    """
-    【待完善】找出回答中可能未被证据支撑的句子/主张。
+    from src.tools.citation_policy import detect_unsupported_claims as _detect
 
-    参数:
-        answer: 模型回答。
-        contexts: 当次证据。
-
-    返回:
-        list[str]: 可疑主张列表（原文句子）。
-
-    作用:
-        辅助人工复核与自动拒答/降级策略。
-    """
-    raise NotImplementedError("待队员实现：detect_unsupported_claims")
+    return _detect(answer, contexts)

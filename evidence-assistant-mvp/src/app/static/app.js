@@ -336,7 +336,11 @@
       if (healthResponse.ok) {
         const health = await healthResponse.json();
         els.apiDot.classList.add("is-online");
-        els.apiStatus.textContent = "本地服务已连接";
+        const degraded = health.status && health.status !== "ok";
+        const reasons = (health.degraded_reasons || []).join("、");
+        els.apiStatus.textContent = degraded
+          ? `本地服务已连接（知识库降级${reasons ? `：${reasons}` : ""}）`
+          : "本地服务已连接";
         els.promptVersion.textContent = health.prompt_version || state.config.prompt_version;
       }
     } catch (error) {

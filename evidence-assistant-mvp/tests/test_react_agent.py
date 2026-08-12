@@ -40,11 +40,15 @@ class ReactQueryRewriteTests(unittest.TestCase):
             "src.agent.react_agent.verify_citations",
             return_value={"ok": True, "has_citations": True},
         )
-        strip_patch = patch(
-            "src.agent.react_agent.strip_invalid_claims",
-            side_effect=lambda answer, _check: answer,
+        policy_patch = patch(
+            "src.agent.react_agent.apply_citation_failure_policy",
+            side_effect=lambda answer, _ctx, citations, check, **kw: (answer, citations, check),
         )
-        with llm_patches, gen_patch, cite_patch, strip_patch:
+        finalize_patch = patch(
+            "src.agent.react_agent.finalize_grounded_answer",
+            side_effect=lambda answer, citations, check: (answer, citations, check),
+        )
+        with llm_patches, gen_patch, cite_patch, policy_patch, finalize_patch:
             result = agent.run("DASH饮食对血压的证据？")
         self.assertIn("guideline", result.get("rewritten_query", ""))
         self.assertGreater(len(result.get("contexts", [])), 0)

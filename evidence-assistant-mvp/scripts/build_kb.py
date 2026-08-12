@@ -23,9 +23,15 @@ from src.ingest.clinicaltrials import ingest_clinicaltrials
 from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
-from src.kb.chunking import docs_to_chunks, merge_tiny_chunks, validate_chunk_traceability
+from src.kb.chunking import docs_to_chunks, merge_tiny_chunks
 from src.models import EvidenceDoc
-from src.kb.store import EvidenceStore, export_store_stats, rebuild_collection_from_processed
+from src.kb.store import (
+    EvidenceStore,
+    atomic_publish_chunks,
+    export_store_stats,
+    rebuild_collection_from_processed,
+    validate_build_chunks,
+)
 from src.kb.wiki import generate_wiki_pages
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -120,13 +126,13 @@ def build_kb(
     else:
         chunks = docs_to_chunks(all_docs)
         chunks = merge_tiny_chunks(chunks)
-        trace = validate_chunk_traceability(chunks)
-        if not trace["ok"]:
-            logger.warning("Chunk traceability issues: %s", trace)
         store = EvidenceStore()
-        if reset:
-            store.reset()
-        n = store.upsert_chunks(chunks)
+        try:
+            previous_count = store.count()
+        except Exception:
+            previous_count = None
+        validate_build_chunks(chunks, previous_count=previous_count)
+        n = atomic_publish_chunks(chunks, previous_count=previous_count)
         logger.info("Knowledge base ready: %d chunks (store count=%d)", n, store.count())
     if stats:
         export_store_stats(settings.processed_path / "store_stats.json")
@@ -143,7 +149,7 @@ def main() -> None:
     build_kb(
         skip_live=args.skip_live,
         skip_ingest=args.skip_ingest,
-        reset=not args.no_reset,
+        reset=not args.no_reset,  # kept for CLI compat; publish path always uses atomic merge
         incremental=args.incremental,
         stats=args.stats,
     )

@@ -37,8 +37,8 @@ from src.ingest.clinicaltrials import ingest_clinicaltrials
 from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
-from src.kb.chunking import docs_to_chunks, merge_tiny_chunks, validate_chunk_traceability
-from src.kb.store import EvidenceStore, export_store_stats
+from src.kb.chunking import docs_to_chunks, merge_tiny_chunks
+from src.kb.store import EvidenceStore, atomic_publish_chunks, export_store_stats
 from src.kb.wiki import generate_wiki_pages
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
@@ -225,13 +225,12 @@ def expand_knowledge_base(
     save_docs(all_docs, settings.processed_path / "documents_with_wiki.json")
 
     chunks = merge_tiny_chunks(docs_to_chunks(all_docs))
-    trace = validate_chunk_traceability(chunks)
-    if not trace["ok"]:
-        raise RuntimeError(f"Chunk traceability failed: {trace}")
-
     store = EvidenceStore()
-    store.reset()
-    store.upsert_chunks(chunks)
+    try:
+        previous_count = store.count()
+    except Exception:
+        previous_count = None
+    atomic_publish_chunks(chunks, previous_count=previous_count)
     stats = export_store_stats(settings.processed_path / "store_stats.json")
     actual_chunks = int(stats.get("count", store.count()))
     if actual_chunks < target_chunks:

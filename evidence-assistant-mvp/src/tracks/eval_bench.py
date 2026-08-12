@@ -90,6 +90,7 @@ def run_single(
         + len(rag_check.get("invalid_brackets") or [])
         + len(rag_check.get("fake_docs") or [])
     )
+    missing_body = rag_check.get("reason") == "missing_body_citations"
 
     persona = NUTRITION_PERSONA if track == "nutrition" else CLINICAL_PERSONA
     baseline_answer = generate_baseline_answer(q, system_persona=persona)
@@ -106,6 +107,7 @@ def run_single(
             "has_citations": bool(rag_check.get("has_citations")),
             "fake_citation_count": rag_fake,
             "citation_ok": rag_check.get("ok", False),
+            "missing_body_citations": missing_body,
             "gold_coverage": _gold_coverage(rag.answer, gold),
             "n_contexts": len(rag.contexts),
             "rewritten_query": rag.rewritten_query,
@@ -137,6 +139,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
     rag_cov = sum(r["rag"]["gold_coverage"] for r in results) / n
     base_cov = sum(r["baseline"]["gold_coverage"] for r in results) / n
     empty_ctx = sum(r["rag"]["n_contexts"] == 0 for r in results)
+    missing_body_rate = sum(r["rag"].get("missing_body_citations") for r in results) / n
 
     return {
         "n": len(results),
@@ -144,6 +147,7 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
         "baseline_fake_citation_signal_rate": round(base_fake_rate, 3),
         "rag_citation_coverage": round(rag_cite_rate, 3),
         "rag_refusal_rate": round(rag_refuse_rate, 3),
+        "rag_missing_body_citations_rate": round(missing_body_rate, 3),
         "rag_avg_gold_coverage": round(rag_cov, 3),
         "baseline_avg_gold_coverage": round(base_cov, 3),
         "rag_empty_context_cases": empty_ctx,

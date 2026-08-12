@@ -3,7 +3,7 @@ const chatInput = document.getElementById("chatInput");
 const sendBtn = document.getElementById("sendBtn");
 const reactStepsEl = document.getElementById("reactSteps");
 const reactEmptyEl = document.getElementById("reactEmpty");
-const evidenceListEl = document.getElementById("evidenceList");
+const kbHealthBanner = document.getElementById("kbHealthBanner");
 const evidenceEmptyEl = document.getElementById("evidenceEmpty");
 const evidenceCountEl = document.getElementById("evidenceCount");
 const answerMetaPanel = document.getElementById("answerMetaPanel");
@@ -147,9 +147,9 @@ function renderInlineMarkdown(text) {
 
 function renderAnswerHtml(reply, contexts, citationCheck) {
   const indices = (contexts || []).map((c, i) => Number(c.index ?? i + 1));
-  const used = citationCheck?.used_brackets?.length
-    ? citationCheck.used_brackets.map(Number)
-    : indices;
+  const used = (citationCheck?.valid_used_brackets?.length
+    ? citationCheck.valid_used_brackets
+    : citationCheck?.used_brackets)?.map(Number) || indices;
 
   const renderLine = (line) =>
     line
@@ -310,7 +310,12 @@ function renderReactSteps(steps) {
 function renderEvidence(contexts, citationCheck) {
   if (!evidenceListEl) return;
   evidenceListEl.innerHTML = "";
-  const usedSet = new Set((citationCheck?.used_brackets || []).map(Number));
+  const usedSet = new Set(
+    (citationCheck?.valid_used_brackets?.length
+      ? citationCheck.valid_used_brackets
+      : citationCheck?.used_brackets || []
+    ).map(Number)
+  );
   if (!contexts || !contexts.length) {
     if (evidenceEmptyEl) evidenceEmptyEl.style.display = "block";
     if (evidenceCountEl) evidenceCountEl.textContent = "0 条";
@@ -329,13 +334,15 @@ function renderEvidence(contexts, citationCheck) {
       typeLabel = trialStatus ? `试验注册 · ${trialStatus}` : "试验注册";
     }
     const isCited = usedSet.size ? usedSet.has(idx) : true;
+    const citable = c.citation_eligible !== false;
     const details = document.createElement("details");
     details.className = "evidence-expander" + (isCited ? " is-cited" : " is-retrieved-only");
     details.id = `evidence-${idx}`;
     details.open = i === 0;
     const summary = document.createElement("summary");
     const badge = isCited ? "已引用" : "仅检索";
-    summary.innerHTML = `<span class="evidence-index">[${idx}]</span> ${escapeHtml(title)}${typeLabel ? ` (${escapeHtml(typeLabel)})` : ""} <span class="evidence-tag">${badge}</span>`;
+    const citeBadge = citable ? "" : ' <span class="evidence-tag evidence-tag--ineligible">不可引用</span>';
+    summary.innerHTML = `<span class="evidence-index">[${idx}]</span> ${escapeHtml(title)}${typeLabel ? ` (${escapeHtml(typeLabel)})` : ""} <span class="evidence-tag">${badge}</span>${citeBadge}`;
     const body = document.createElement("div");
     body.className = "evidence-expander-body";
     const meta = document.createElement("p");
@@ -484,8 +491,37 @@ chatInput?.addEventListener("keydown", (e) => {
 });
 
 applyTrackUI(currentTrack);
+
+async function bootstrapKbHealth() {
+  if (!kbHealthBanner) return;
+  try {
+    const resp = await fetch("/health");
+    if (!resp.ok) return;
+    const health = await resp.json();
+    const status = health.status || "unknown";
+    const reasons = health.degraded_reasons || [];
+    kbHealthBanner.hidden = false;
+    if (status === "ok") {
+      kbHealthBanner.className = "kb-health-banner is-ok";
+      kbHealthBanner.textContent = "知识库状态：正常（Chroma + BM25 可用）";
+    } else {
+      kbHealthBanner.className = "kb-health-banner";
+      kbHealthBanner.textContent =
+        "知识库状态：降级" +
+        (reasons.length ? `（${reasons.join("、")}）` : "") +
+        "。当前可能仅 BM25 检索可用，语义向量召回或索引完整性受限。";
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", showWelcome);
+  document.addEventListener("DOMContentLoaded", () => {
+    showWelcome();
+    bootstrapKbHealth();
+  });
 } else {
   showWelcome();
+  bootstrapKbHealth();
 }

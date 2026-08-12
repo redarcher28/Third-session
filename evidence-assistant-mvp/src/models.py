@@ -80,6 +80,7 @@ class Citation(BaseModel):
     snippet: str = ""  # 句子对齐的短摘要，供参考文献等紧凑场景
     record_type: str = "other"  # 记录语义类型（试验注册 vs 发表文献等）
     trial_status: str = ""  # 临床试验状态（仅 trial_registry）
+    citation_eligible: bool = True  # 是否可作为回答正文中的 [n] 引用
 
 
 class AskRequest(BaseModel):

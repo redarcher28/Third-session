@@ -212,6 +212,26 @@ def _source_footer(
         if timing_parts:
             lines.append(f"- 分阶段耗时：{' · '.join(timing_parts)}")
 
+    kb_status = retrieval.get("kb_status")
+    degraded = retrieval.get("degraded_reasons") or []
+    if kb_status:
+        status_label = "正常" if kb_status == "ok" else "降级"
+        lines.append(f"- 知识库状态：**{status_label}** (`{kb_status}`)")
+        if degraded:
+            lines.append(f"- 降级原因：{', '.join(_single_line(str(x)) for x in degraded)}")
+    elif citation_check or citations:
+        try:
+            from src.kb.health import kb_health_report
+
+            health = kb_health_report()
+            status_label = "正常" if health.get("status") == "ok" else "降级"
+            lines.append(f"- 知识库状态：**{status_label}** (`{health.get('status', 'unknown')}`)")
+            reasons = health.get("degraded_reasons") or []
+            if reasons:
+                lines.append(f"- 降级原因：{', '.join(_single_line(str(x)) for x in reasons)}")
+        except Exception:
+            pass
+
     if citations:
         lines.extend(
             [
@@ -230,6 +250,8 @@ def _source_footer(
                 metadata.append(str(citation.year))
             lines.append(f"#### [{citation.index}] {title}")
             lines.append(f"- 证据等级 / 来源：{' / '.join(metadata)}")
+            if citation.citation_eligible is False:
+                lines.append("- 引用资格：**不可作为正文核验引用**（仅检索参考）")
             snippet = _markdown_label(citation.text or citation.snippet, "暂无摘要片段")
             lines.append(f"- 摘要：{snippet}")
             if citation.url.strip():

@@ -28,6 +28,7 @@ from src.app.kb_stats import fetch_kb_stats
 from src.app.openwebui import OpenAIChatRequest, chat_completions, model_list
 from src.app.settings_api import router as settings_router
 from src.config import get_settings
+from src.kb.health import kb_health_report
 from src.models import AskRequest, AskResponse
 from src.tracks.eval_bench import run_benchmark
 from src.tracks.pipeline import ask
@@ -50,6 +51,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def _log_kb_health_on_startup() -> None:
+    import logging
+
+    report = kb_health_report()
+    if report["status"] != "ok":
+        logging.getLogger(__name__).warning(
+            "Knowledge base degraded at startup: %s (chroma_ok=%s, bm25=%s/%s)",
+            report["degraded_reasons"],
+            report["chroma"]["chroma_ok"],
+            report["retrieval"]["bm25_indexed_count"],
+            report["retrieval"]["bm25_cache_total"],
+        )
 
 ETHICS = (
     "本系统仅用于学习与演示，不用于真实诊疗，不处理真实患者隐私。"
@@ -133,8 +149,16 @@ def fallback_web_app() -> FileResponse:
 
 @app.get("/health")
 def health() -> dict:
+    report = kb_health_report()
     return {
-        "status": "ok",
+        "status": report["status"],
+        "degraded_reasons": report["degraded_reasons"],
+        "chroma_ok": report["chroma"]["chroma_ok"],
+        "store_count": report["chroma"]["store_count"],
+        "bm25_indexed_count": report["retrieval"]["bm25_indexed_count"],
+        "bm25_cache_total": report["retrieval"]["bm25_cache_total"],
+        "bm25_index_complete": report["retrieval"]["bm25_index_complete"],
+        "chromadb_version": report["chroma"]["chromadb_version"],
         "ethics": ETHICS,
         "react": True,
         "prompt_version": PROMPT_VERSION,
