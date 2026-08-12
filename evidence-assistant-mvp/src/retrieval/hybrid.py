@@ -181,6 +181,29 @@ class HybridRetriever:
                 break
         return [normalize_retrieved_context(c) for c in final]
 
+    def retrieve_candidates(
+        self,
+        query: str,
+        *,
+        candidate_k: int = 20,
+        prefer_levels: list[str] | None = None,
+        boost_tags: list[str] | None = None,
+        use_llm_rerank: bool = False,
+    ) -> list[dict[str, Any]]:
+        """
+        返回扩大后的候选证据池，供充分性控制器筛选最小证据集。
+
+        不改变 retrieve() 的既有 Top-K 语义；默认不做 LLM 重排，保证 BM25-only 可运行。
+        """
+        return self.retrieve(
+            query,
+            top_k=candidate_k,
+            candidate_k=max(candidate_k, 16),
+            prefer_levels=prefer_levels,
+            boost_tags=boost_tags,
+            use_llm_rerank=use_llm_rerank,
+        )
+
     def _bm25_search(self, query: str, top_n: int = 16) -> list[dict[str, Any]]:
         """关键词召回：返回 BM25 分数最高的 top_n 条。"""
         if not self._bm25 or not self._bm25_docs:

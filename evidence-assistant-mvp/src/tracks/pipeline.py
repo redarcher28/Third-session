@@ -19,6 +19,7 @@ from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer,
 from src.kb.chunking import docs_to_chunks
 from src.models import AskResponse, Citation
 from src.text_utils import context_to_citation_kwargs
+from src.retrieval.evidence_set import build_evidence_plan
 from src.retrieval.hybrid import HybridRetriever
 from src.text_utils import filter_citable_contexts
 from src.tools.citation_policy import apply_citation_failure_policy
@@ -210,6 +211,7 @@ def _retrieval_summary(
     use_live_tools: bool,
     timings_ms: dict[str, float] | None = None,
     query_reformulation_mode: str = "llm",
+    evidence_plan_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """生成供前端和报告使用的轻量检索摘要，不暴露完整内部候选。"""
     sources = Counter(str(c.get("source") or "unknown") for c in contexts)
@@ -226,6 +228,8 @@ def _retrieval_summary(
     }
     if timings_ms:
         summary["timings_ms"] = dict(timings_ms)
+    if evidence_plan_fields:
+        summary.update(evidence_plan_fields)
     try:
         from src.kb.health import kb_health_report
 
@@ -275,6 +279,7 @@ def build_retrieval_summary(
     use_live_tools: bool,
     query_reformulation_mode: str = "lexical",
     timings_ms: dict[str, float] | None = None,
+    evidence_plan_fields: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """供 API / 前端展示的统一检索摘要。"""
     return _retrieval_summary(
@@ -284,6 +289,7 @@ def build_retrieval_summary(
         use_live_tools=use_live_tools,
         timings_ms=timings_ms,
         query_reformulation_mode=query_reformulation_mode,
+        evidence_plan_fields=evidence_plan_fields,
     )
 
 
@@ -361,26 +367,77 @@ def ask(
         prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
 
     retrieval_started = perf_counter()
-    contexts = retriever.retrieve(
-        rewritten,
-        top_k=top_k,
-        prefer_levels=prefer,
-        boost_tags=boost,
-        use_llm_rerank=settings.rag_use_llm_rerank,
-    )
+    # 候选池大于最终证据集；充分性控制器再压缩到 top_k
+    candidate_k = max(16, min(24, top_k * 4))
+
+    def _retrieve_pool(query: str, k: int) -> list[dict[str, Any]]:
+        if hasattr(retriever, "retrieve_candidates"):
+            return retriever.retrieve_candidates(  # type: ignore[attr-defined]
+                query,
+                candidate_k=k,
+                prefer_levels=prefer,
+                boost_tags=boost,
+                use_llm_rerank=False,
+            )
+        return retriever.retrieve(
+            query,
+            top_k=k,
+            prefer_levels=prefer,
+            boost_tags=boost,
+            use_llm_rerank=False,
+        )
+
+    candidates = _retrieve_pool(rewritten, candidate_k)
     if use_live_tools:
-        contexts = _live_augment(rewritten, contexts)[: top_k + 2]
+        candidates = _live_augment(rewritten, candidates)[: candidate_k + 2]
+
+    plan = build_evidence_plan(
+        question,
+        initial_candidates=candidates,
+        retrieve_fn=_retrieve_pool,
+        max_evidence=top_k,
+        max_rounds=2,
+    )
+    plan_fields = plan.to_retrieval_fields()
+    if plan.status == "unmapped":
+        # 未进入主张卡充分性判定：保留既有 Top-K 语义
+        contexts = retriever.retrieve(
+            rewritten,
+            top_k=top_k,
+            prefer_levels=prefer,
+            boost_tags=boost,
+            use_llm_rerank=settings.rag_use_llm_rerank,
+        )
+        if use_live_tools:
+            contexts = _live_augment(rewritten, contexts)[: top_k + 2]
+    else:
+        contexts = list(plan.selected_contexts)[:top_k]
+        if not contexts:
+            contexts = candidates[:top_k]
     timings_ms["retrieval_ms"] = round((perf_counter() - retrieval_started) * 1000, 1)
 
     # 临床赛道要求指南/系统综述/RCT 级证据（规则 2：缺预期证据类型→标注不足）
     relevance_started = perf_counter()
     expect_levels = tuple(PREFER_LEVELS[:3]) if track == "clinical" else None
-    reject_reason = _is_low_relevance(question, contexts, expect_levels=expect_levels)
+    reject_reason = None
+    if plan.status == "insufficient":
+        reject_reason = "missing_evidence_type"
+    elif plan.status == "unmapped":
+        reject_reason = _is_low_relevance(question, contexts, expect_levels=expect_levels)
     timings_ms["relevance_check_ms"] = round((perf_counter() - relevance_started) * 1000, 1)
-    if reject_reason:
+    if reject_reason and plan.status != "partial":
         _finish_timings(timings_ms, started)
+        if plan.status == "insufficient":
+            answer = (
+                _build_qualified_refusal(question, contexts, reject_reason)
+                + "\n"
+                + "；".join(plan.missing_evidence)
+                + DISCLAIMER
+            )
+        else:
+            answer = _build_qualified_refusal(question, contexts, reject_reason) + DISCLAIMER
         return AskResponse(
-            answer=_build_qualified_refusal(question, contexts, reject_reason) + DISCLAIMER,
+            answer=answer,
             citations=[],
             # 证据不足时仍保留检索到的上下文，供旧证据栏和 Open WebUI 来源区展示。
             contexts=_contexts_to_citations(contexts),
@@ -395,12 +452,21 @@ def ask(
                 use_live_tools=use_live_tools,
                 timings_ms=timings_ms,
                 query_reformulation_mode=rewrite_mode,
+                evidence_plan_fields=plan_fields,
             ),
             citation_check={"ok": True, "has_citations": False, "reason": reject_reason},
             timings_ms=timings_ms,
         )
 
     generation_started = perf_counter()
+    gen_kwargs: dict[str, Any] = {}
+    if plan.status in {"partial", "sufficient", "insufficient"}:
+        gen_kwargs = {
+            "allowed_claims": plan.allowed_claims,
+            "limitations": plan.limitations,
+            "missing_evidence": plan.missing_evidence,
+            "evidence_status": plan.status,
+        }
     answer, citations, refused = generate_answer(
         question,
         contexts,
@@ -408,6 +474,7 @@ def ask(
         answer_style=style,
         track=track,
         stream_callback=stream_callback,
+        **gen_kwargs,
     )
     timings_ms["generation_ms"] = round((perf_counter() - generation_started) * 1000, 1)
     validation_started = perf_counter()
@@ -419,6 +486,17 @@ def ask(
         )
         if check.get("ok"):
             answer, citations, check = finalize_grounded_answer(answer, citations, check)
+        elif plan.status in {"partial", "sufficient"} and plan.allowed_claims:
+            # 引用失败 → 确定性证据卡，避免误用「模型不可用」措辞掩盖策略降级
+            from src.retrieval.evidence_set import render_allowed_claims_answer
+
+            answer = render_allowed_claims_answer(plan) + DISCLAIMER
+            citations = []
+            check = {
+                **check,
+                "ok": False,
+                "reason": check.get("reason") or "citation_check_failed_evidence_card",
+            }
     # 营养赛道后处理：术语通俗化 + 药量防御警示（面向普通群众的产品边界）
     if not refused and track == "nutrition":
         # 术语替换需要看到完整回答；流式分支保留模型已经按赛道 Prompt
@@ -455,6 +533,7 @@ def ask(
             use_live_tools=use_live_tools,
             timings_ms=timings_ms,
             query_reformulation_mode=rewrite_mode,
+            evidence_plan_fields=plan_fields,
         ),
         citation_check=check,
         timings_ms=timings_ms,

@@ -198,6 +198,10 @@ def build_synthesis_messages(
     *,
     system_persona: str | None = None,
     answer_style: str | None = None,
+    allowed_claims: list[str] | None = None,
+    limitations: list[str] | None = None,
+    missing_evidence: list[str] | None = None,
+    evidence_status: str | None = None,
 ) -> list[dict[str, str]]:
     """
     构造 grounded system + synthesis 层消息。
@@ -208,6 +212,24 @@ def build_synthesis_messages(
     profile = get_track_profile(track)
     persona = system_persona or profile.persona
     style = answer_style or profile.style
+    claim_guard = ""
+    if allowed_claims or missing_evidence or limitations or evidence_status:
+        claims_txt = "\n".join(f"- {c}" for c in (allowed_claims or [])) or "- （无）"
+        miss_txt = "\n".join(f"- {m}" for m in (missing_evidence or [])) or "- （无）"
+        lim_txt = "\n".join(f"- {x}" for x in (limitations or [])[:8]) or "- （无）"
+        claim_guard = f"""
+
+## ALLOWED CLAIMS / 允许主张（不得越界）
+证据充分性状态：{evidence_status or "unspecified"}
+只能表述下列已允许主张，不得补充其外的疗效/风险/适用人群结论：
+{claims_txt}
+
+已知局限：
+{lim_txt}
+
+证据缺口（必须显式说明，不得编造补齐）：
+{miss_txt}
+""".rstrip()
     system = f"""
 {persona}
 
@@ -216,6 +238,7 @@ def build_synthesis_messages(
 - 每个事实性主张都必须能回溯到一个或多个证据编号。
 - 证据只部分回答问题时，明确区分“证据支持的部分”和“当前未覆盖的部分”。
 - 如果没有足够证据，直接说明不知道/证据不足，不要为了完整而猜测。
+{claim_guard}
 
 ## CITATION / 引用纪律
 - 只使用 [n] 形式引用，n 必须是下方证据实际存在的编号。

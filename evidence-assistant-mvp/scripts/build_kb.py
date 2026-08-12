@@ -23,6 +23,7 @@ from src.ingest.clinicaltrials import ingest_clinicaltrials
 from src.ingest.europepmc import ingest_europepmc
 from src.ingest.local_docs import ingest_local
 from src.ingest.pubmed import ingest_pubmed
+from src.kb.assertions import AssertionValidationError, validate_and_export_assertions
 from src.kb.chunking import docs_to_chunks, merge_tiny_chunks
 from src.models import EvidenceDoc
 from src.kb.store import (
@@ -132,6 +133,23 @@ def build_kb(
         except Exception:
             previous_count = None
         validate_build_chunks(chunks, previous_count=previous_count)
+        # 主张卡：最终 Chunk 就绪后、正式发布前硬校验；失败不得覆盖正式 Chroma。
+        try:
+            assertion_report = validate_and_export_assertions(
+                chunks,
+                processed_dir=settings.processed_path,
+            )
+            if assertion_report.get("disabled"):
+                logger.info("Assertion cards disabled (no curated source); build continues")
+            else:
+                logger.info(
+                    "Assertion cards ready: total=%s production=%s",
+                    assertion_report.get("assertion_count"),
+                    assertion_report.get("production_count"),
+                )
+        except AssertionValidationError:
+            logger.error("Assertion validation failed; refusing to publish Chroma")
+            raise
         n = atomic_publish_chunks(chunks, previous_count=previous_count)
         logger.info("Knowledge base ready: %d chunks (store count=%d)", n, store.count())
     if stats:

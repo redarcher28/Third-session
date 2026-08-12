@@ -88,6 +88,26 @@ def _evidence_only_fallback(citations: list[Citation]) -> str:
     return "\n\n".join(lines)
 
 
+def _answer_overclaims(answer: str, allowed_claims: list[str]) -> bool:
+    """粗检：回答是否引入与允许主张明显无关的疗效措辞。"""
+    if not allowed_claims:
+        return True
+    body = answer
+    for marker in (DISCLAIMER.strip(), "**参考文献**", "参考文献"):
+        if marker and marker in body:
+            body = body.split(marker)[0]
+    # 若几乎不复述任何允许主张关键词，且出现强疗效句式，视为越界
+    claim_blob = " ".join(allowed_claims)
+    claim_tokens = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", claim_blob.lower()))
+    body_tokens = set(re.findall(r"[\u4e00-\u9fff]{2,}|[a-zA-Z]{3,}", body.lower()))
+    overlap = len(claim_tokens & body_tokens) / max(1, len(claim_tokens))
+    strong = any(
+        k in body
+        for k in ("一定能治愈", "保证降压", "可以停药", "替代药物治疗", "推荐剂量", "处方")
+    )
+    return strong or overlap < 0.08
+
+
 def generate_answer(
     question: str,
     contexts: list[dict[str, Any]],
@@ -96,6 +116,11 @@ def generate_answer(
     answer_style: str,
     track: str = "clinical",
     stream_callback: Callable[[str], None] | None = None,
+    allowed_claims: list[str] | None = None,
+    limitations: list[str] | None = None,
+    missing_evidence: list[str] | None = None,
+    evidence_status: str | None = None,
+    force_evidence_card: bool = False,
 ) -> tuple[str, list[Citation], bool]:
     """
     基于检索证据生成带引用回答；无证据则拒答。
@@ -106,6 +131,9 @@ def generate_answer(
         system_persona: 赛道人格系统提示。
         answer_style: 回答风格约束说明。
         track: 赛道 key，用于加载统一 synthesis Prompt。
+        allowed_claims / limitations / missing_evidence / evidence_status:
+            主张卡充分性约束；存在时写入 synthesis Prompt。
+        force_evidence_card: 跳过模型，直接输出证据卡模板。
 
     返回:
         tuple:
@@ -114,7 +142,7 @@ def generate_answer(
             - refused (bool): 是否拒答
     """
     citable = filter_citable_contexts(contexts)
-    if not citable:
+    if not citable and evidence_status != "insufficient":
         return (
             "当前检索到的证据均不可作为可核验的外部引用（如本地无外链文档）。"
             "请在证据面板查看检索片段，或补充带公开链接的文献后重试。"
@@ -122,7 +150,42 @@ def generate_answer(
             [],
             True,
         )
-    citations = contexts_to_citations(citable)
+    citations = contexts_to_citations(citable) if citable else contexts_to_citations(contexts)
+
+    if evidence_status == "insufficient" or force_evidence_card:
+        from src.retrieval.evidence_set import EvidencePlan, render_allowed_claims_answer
+
+        plan = EvidencePlan(
+            status=(evidence_status or "insufficient"),  # type: ignore[arg-type]
+            allowed_claims=list(allowed_claims or []),
+            limitations=list(limitations or []),
+            missing_evidence=list(missing_evidence or []),
+        )
+        card = render_allowed_claims_answer(plan) + DISCLAIMER
+        if stream_callback:
+            stream_callback(card)
+        refused = evidence_status == "insufficient" or (
+            force_evidence_card and evidence_status not in {"partial", "sufficient"}
+        )
+        return card, citations, refused
+
+    # 流式场景下越界难回滚：有主张约束时提前用确定性证据卡
+    if (
+        stream_callback is not None
+        and evidence_status in {"partial", "sufficient"}
+        and allowed_claims is not None
+    ):
+        from src.retrieval.evidence_set import EvidencePlan, render_allowed_claims_answer
+
+        plan = EvidencePlan(
+            status=evidence_status,  # type: ignore[arg-type]
+            allowed_claims=list(allowed_claims),
+            limitations=list(limitations or []),
+            missing_evidence=list(missing_evidence or []),
+        )
+        card = render_allowed_claims_answer(plan) + DISCLAIMER
+        stream_callback(card)
+        return card, citations, False
 
     context_block = format_context_block(citations)
     messages = build_synthesis_messages(
@@ -131,6 +194,10 @@ def generate_answer(
         context_block,
         system_persona=system_persona,
         answer_style=answer_style,
+        allowed_claims=allowed_claims,
+        limitations=limitations,
+        missing_evidence=missing_evidence,
+        evidence_status=evidence_status,
     )
     llm = get_llm()
     streamed_chunks: list[str] = []
@@ -168,6 +235,26 @@ def generate_answer(
             suffix = fallback if not streamed_chunks else "\n\n" + fallback
             stream_callback(suffix)
         return fallback, citations, True
+
+    if allowed_claims and _answer_overclaims(answer, allowed_claims):
+        from src.retrieval.evidence_set import EvidencePlan, render_allowed_claims_answer
+
+        plan = EvidencePlan(
+            status=(evidence_status or "partial"),  # type: ignore[arg-type]
+            allowed_claims=list(allowed_claims),
+            limitations=list(limitations or []),
+            missing_evidence=list(missing_evidence or []),
+        )
+        card = render_allowed_claims_answer(plan) + DISCLAIMER
+        # 流式已输出时无法撤回；追加确定性纠偏卡
+        if stream_callback and streamed_chunks:
+            stream_callback("\n\n---\n" + card)
+            answer = answer.rstrip() + "\n\n---\n" + card
+        else:
+            if stream_callback:
+                stream_callback(card)
+            answer = card
+
     if DISCLAIMER.strip() not in answer:
         answer = answer.rstrip() + DISCLAIMER
         if stream_callback:
