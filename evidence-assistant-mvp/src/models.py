@@ -76,7 +76,8 @@ class Citation(BaseModel):
     year: int | None = None
     url: str = ""
     evidence_level: str = "other"
-    snippet: str = ""  # 摘要片段，供证据面板展示
+    text: str = ""  # 检索块完整正文，供证据面板展示
+    snippet: str = ""  # 句子对齐的短摘要，供参考文献等紧凑场景
     record_type: str = "other"  # 记录语义类型（试验注册 vs 发表文献等）
     trial_status: str = ""  # 临床试验状态（仅 trial_registry）
 

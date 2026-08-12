@@ -353,7 +353,7 @@ function renderEvidence(contexts, citationCheck) {
     }
     const snippet = document.createElement("p");
     snippet.className = "evidence-expander-snippet";
-    snippet.textContent = c.snippet || c.text || "";
+    snippet.textContent = (c.text || c.snippet || "").trim();
     body.appendChild(snippet);
     details.appendChild(summary);
     details.appendChild(body);

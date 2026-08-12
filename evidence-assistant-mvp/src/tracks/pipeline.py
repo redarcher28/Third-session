@@ -18,6 +18,7 @@ from src.config import get_settings
 from src.generation.answer import REFUSAL_TEMPLATE, DISCLAIMER, generate_answer
 from src.kb.chunking import docs_to_chunks
 from src.models import AskResponse, Citation
+from src.text_utils import context_to_citation_kwargs
 from src.retrieval.hybrid import HybridRetriever
 from src.tools.cite_check import strip_invalid_claims, verify_citations
 from src.tools.live_search import search_clinical_trials, search_pubmed
@@ -62,23 +63,7 @@ OUT_OF_SCOPE = {
 
 
 def _context_dict_to_citation(index: int, context: dict[str, Any]) -> Citation:
-    year = context.get("year")
-    try:
-        parsed_year = None if year in (None, -1, "-1") else int(year)
-    except (TypeError, ValueError):
-        parsed_year = None
-    return Citation(
-        index=index,
-        doc_id=str(context.get("doc_id") or context.get("chunk_id") or ""),
-        title=str(context.get("title") or ""),
-        source=str(context.get("source") or ""),
-        year=parsed_year,
-        url=str(context.get("url") or ""),
-        evidence_level=str(context.get("evidence_level") or "other"),
-        snippet=str(context.get("text") or "")[:240],
-        record_type=str(context.get("record_type") or "other"),
-        trial_status=str(context.get("trial_status") or ""),
-    )
+    return Citation(**context_to_citation_kwargs(context, index))
 
 
 def _contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:

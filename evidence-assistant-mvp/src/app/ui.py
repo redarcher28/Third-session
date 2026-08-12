@@ -57,7 +57,7 @@ def render_evidence_cards(contexts: list) -> None:
             )
             if citation.url:
                 st.markdown(f"[打开原始来源]({citation.url})")
-            st.write(citation.snippet or "暂无摘要片段")
+            st.write(citation.text or citation.snippet or "暂无摘要片段")
 
 
 def render_retrieval_explanation(explanation: dict) -> None:

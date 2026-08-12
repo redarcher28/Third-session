@@ -15,6 +15,7 @@ from src.generation.answer import DISCLAIMER, append_reference_section_if_needed
 from src.kb.chunking import docs_to_chunks
 from src.llm import get_llm
 from src.models import Citation
+from src.text_utils import context_to_citation_kwargs
 from src.retrieval.hybrid import HybridRetriever
 from src.tools.cite_check import strip_invalid_claims, verify_citations
 from src.tools.live_search import search_clinical_trials, search_pubmed
@@ -80,23 +81,7 @@ def _parse_react(text: str) -> tuple[str, str, dict[str, Any]]:
 
 
 def _contexts_to_citation_list(contexts: list[dict[str, Any]]) -> list[Citation]:
-    out: list[Citation] = []
-    for i, c in enumerate(contexts, start=1):
-        out.append(
-            Citation(
-                index=i,
-                doc_id=str(c.get("doc_id") or ""),
-                title=str(c.get("title") or ""),
-                source=str(c.get("source") or ""),
-                year=None if c.get("year") in (None, -1, "-1") else int(c["year"]),
-                url=str(c.get("url") or ""),
-                evidence_level=str(c.get("evidence_level") or "other"),
-                snippet=str(c.get("text") or "")[:240],
-                record_type=str(c.get("record_type") or "other"),
-                trial_status=str(c.get("trial_status") or ""),
-            )
-        )
-    return out
+    return [Citation(**context_to_citation_kwargs(c, i)) for i, c in enumerate(contexts, start=1)]
 
 
 def _format_observation(contexts: list[dict[str, Any]], prefix: str = "") -> str:

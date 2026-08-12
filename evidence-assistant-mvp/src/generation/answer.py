@@ -12,6 +12,7 @@ from typing import Any
 
 from src.llm import get_llm
 from src.models import Citation
+from src.text_utils import context_to_citation_kwargs, truncate_at_sentence
 from src.tracks.prompt_profiles import build_synthesis_messages
 
 
@@ -50,20 +51,7 @@ def contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:
     """
     cites: list[Citation] = []
     for i, c in enumerate(contexts, start=1):
-        cites.append(
-            Citation(
-                index=i,
-                doc_id=str(c.get("doc_id") or c.get("chunk_id") or f"ctx-{i}"),
-                title=str(c.get("title") or ""),
-                source=str(c.get("source") or ""),
-                year=None if c.get("year") in (None, -1, "-1") else int(c["year"]),
-                url=str(c.get("url") or ""),
-                evidence_level=str(c.get("evidence_level") or "other"),
-                snippet=str(c.get("text") or "")[:240],
-                record_type=str(c.get("record_type") or "other"),
-                trial_status=str(c.get("trial_status") or ""),
-            )
-        )
+        cites.append(Citation(**context_to_citation_kwargs(c, i)))
     return cites
 
 
@@ -292,9 +280,10 @@ def format_reference_section(citations: list[Citation]) -> str:
         )
         if citation.url:
             lines.append(f"    链接：{citation.url}")
-        snippet = (citation.snippet or "").strip()
+        snippet = (citation.snippet or citation.text or "").strip()
         if snippet:
-            lines.append(f"    摘要：{snippet[:180]}{'…' if len(snippet) > 180 else ''}")
+            preview = truncate_at_sentence(snippet, 280, min_keep=80)
+            lines.append(f"    摘要：{preview}")
     return "\n".join(lines)
 
 

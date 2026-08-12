@@ -224,7 +224,7 @@
             </div>
             <h3>${title}</h3>
             <p class="evidence-meta">${escapeHtml(source)} · ${escapeHtml(year)} · ${escapeHtml(context.doc_id || "")}</p>
-            <p class="evidence-snippet">${escapeHtml(context.snippet || "暂无摘要片段")}</p>
+            <p class="evidence-snippet">${escapeHtml(context.text || context.snippet || "暂无摘要片段")}</p>
             ${href ? `<a class="evidence-link" href="${href}" target="_blank" rel="noreferrer">打开原始来源 <span aria-hidden="true">↗</span></a>` : ""}
           </article>`;
       })

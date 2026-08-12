@@ -2026,6 +2026,9 @@ a.recommend-item:hover {
 .evidence-expander-snippet {
   margin: 0;
   white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+  margin-top: 0.65rem;
 }
 
 @media (max-width: 960px) {

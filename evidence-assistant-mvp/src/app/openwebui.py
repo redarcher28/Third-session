@@ -230,7 +230,7 @@ def _source_footer(
                 metadata.append(str(citation.year))
             lines.append(f"#### [{citation.index}] {title}")
             lines.append(f"- 证据等级 / 来源：{' / '.join(metadata)}")
-            snippet = _markdown_label(citation.snippet, "暂无摘要片段")
+            snippet = _markdown_label(citation.text or citation.snippet, "暂无摘要片段")
             lines.append(f"- 摘要：{snippet}")
             if citation.url.strip():
                 lines.append(f"  原文：[打开原始来源](<{citation.url.strip()}>)")
@@ -262,7 +262,7 @@ def _source_event(citations: list[Citation]) -> str:
         title = _single_line(citation.title, citation.doc_id or "未命名来源")
         url = citation.url.strip()
         locator = url or citation.doc_id or f"evidence-{citation.index}"
-        documents.append(citation.snippet.strip() or title)
+        documents.append((citation.text or citation.snippet or "").strip() or title)
         metadata.append(
             {
                 "source": locator,
