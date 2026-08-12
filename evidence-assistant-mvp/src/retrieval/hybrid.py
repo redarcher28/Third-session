@@ -34,17 +34,19 @@ def _tokenize(text: str) -> list[str]:
 
     创新点：中文连续字符按二元组（bigram）切分——中文无空格，
     整句会被切成一个词导致 BM25 完全失配；bigram 无需分词依赖即可工作。
+    注意：中英混排（如 "DASH饮食"）会先拆成英文词 + 中文段分别处理，
+    避免整段被当作单个英文词。
     """
     tokens: list[str] = []
     for m in re.finditer(r"[\w\u4e00-\u9fff]+", text.lower()):
-        seg = m.group()
-        if re.fullmatch(r"[\u4e00-\u9fff]+", seg):
-            if len(seg) == 1:
-                tokens.append(seg)
+        for part in re.findall(r"[a-z0-9_]+|[\u4e00-\u9fff]+", m.group()):
+            if re.fullmatch(r"[\u4e00-\u9fff]+", part):
+                if len(part) == 1:
+                    tokens.append(part)
+                else:
+                    tokens.extend(part[i : i + 2] for i in range(len(part) - 1))
             else:
-                tokens.extend(seg[i : i + 2] for i in range(len(seg) - 1))
-        else:
-            tokens.append(seg)
+                tokens.append(part)
     return tokens
 
 
