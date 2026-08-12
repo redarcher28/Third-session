@@ -8,6 +8,7 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
+from src.ingest import normalize_evidence_metadata
 from src.models import Chunk, EvidenceDoc
 
 
@@ -98,6 +99,10 @@ def docs_to_chunks(docs: Iterable[EvidenceDoc], max_chars: int = 1200) -> list[C
                     tags=list(doc.tags),
                     evidence_level=doc.evidence_level,
                     chunk_index=i,
+                    record_type=doc.record_type,
+                    citation_eligible=doc.citation_eligible,
+                    source_locator=doc.source_locator or doc.url or doc.doc_id,
+                    extra=dict(doc.extra or {}),
                 )
             )
     return out
@@ -148,13 +153,29 @@ def validate_chunk_traceability(chunks: list[Chunk]) -> dict:
         c.chunk_id for c in chunks
         if c.doc_id and c.chunk_id and not c.chunk_id.startswith(c.doc_id)
     ]
+    missing_locator = [c.chunk_id for c in chunks if not (c.source_locator or c.doc_id or "").strip()]
+    invalid_trial_rct = [
+        c.chunk_id
+        for c in chunks
+        if c.record_type == "trial_registry" and c.evidence_level == "rct"
+    ]
     report = {
-        "ok": not (missing_doc_id or missing_title or missing_text or bad_ids or mismatched_ids),
+        "ok": not (
+            missing_doc_id
+            or missing_title
+            or missing_text
+            or bad_ids
+            or mismatched_ids
+            or missing_locator
+            or invalid_trial_rct
+        ),
         "total": len(chunks),
         "missing_doc_id": len(missing_doc_id),
         "missing_title": len(missing_title),
         "missing_url": len(missing_url),
         "missing_text": len(missing_text),
+        "missing_locator": len(missing_locator),
+        "invalid_trial_rct": len(invalid_trial_rct),
         "bad_ids": bad_ids[:10],
         "mismatched_ids": mismatched_ids[:10],
         "sample_missing_url": missing_url[:5],

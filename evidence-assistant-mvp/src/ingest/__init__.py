@@ -12,7 +12,7 @@ import re
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from src.models import EvidenceDoc, EvidenceLevel
 
@@ -47,7 +47,7 @@ def load_docs(path: Path) -> list[EvidenceDoc]:
     if not path.exists():
         return []
     raw = json.loads(path.read_text(encoding="utf-8"))
-    return [EvidenceDoc.model_validate(x) for x in raw]
+    return [normalize_evidence_metadata(EvidenceDoc.model_validate(x)) for x in raw]
 
 
 def merge_docs(*doc_lists: list[EvidenceDoc]) -> list[EvidenceDoc]:
@@ -104,6 +104,84 @@ def normalize_evidence_level(raw_type: str, title: str) -> EvidenceLevel:
     if any(k in blob for k in ("wiki", "维基")):
         return "wiki"
     return "other"
+
+
+def default_record_type(source: str) -> str:
+    """按来源推断默认 record_type。"""
+    mapping = {
+        "pubmed": "published_article",
+        "europepmc": "published_article",
+        "clinicaltrials": "trial_registry",
+        "local": "local_doc",
+        "wiki": "wiki_page",
+    }
+    return mapping.get(source, "other")
+
+
+def classify_trial_registry(status: str) -> tuple[EvidenceLevel, bool]:
+    """
+    临床试验注册记录分级：注册≠已发表 RCT 结果。
+
+    返回:
+        (evidence_level, citation_eligible)
+    """
+    status_u = (status or "UNKNOWN").upper()
+    if status_u == "COMPLETED":
+        # 可引用为「存在该试验」的背景信息，但不当作 RCT 疗效证据
+        return "other", True
+    return "other", False
+
+
+def normalize_evidence_metadata(doc: EvidenceDoc) -> EvidenceDoc:
+    """补全 record_type / source_locator，并修正试验注册误标为 rct 的历史数据。"""
+    if not doc.source_locator.strip():
+        doc.source_locator = (doc.url or doc.doi or doc.doc_id).strip()
+
+    if not doc.record_type or doc.record_type == "other":
+        doc.record_type = default_record_type(doc.source)  # type: ignore[assignment]
+
+    if doc.source == "clinicaltrials":
+        status = str((doc.extra or {}).get("status") or "")
+        level, eligible = classify_trial_registry(status)
+        doc.record_type = "trial_registry"
+        doc.evidence_level = level
+        doc.citation_eligible = eligible
+    elif doc.source in {"pubmed", "europepmc"}:
+        if doc.record_type == "other":
+            doc.record_type = "published_article"
+        doc.citation_eligible = True
+    elif doc.source == "wiki":
+        doc.record_type = "wiki_page"
+    elif doc.source == "local":
+        if doc.record_type == "other":
+            doc.record_type = "local_doc"
+        if doc.evidence_level == "guideline":
+            doc.record_type = "guideline_excerpt"
+
+    if not doc.source_locator.strip():
+        doc.source_locator = doc.doc_id
+    return doc
+
+
+def normalize_retrieved_context(item: dict[str, Any]) -> dict[str, Any]:
+    """检索结果元数据兜底：修正索引中遗留的试验注册误标为 rct。"""
+    source = str(item.get("source") or "")
+    record_type = str(item.get("record_type") or "")
+    if not record_type or record_type == "other":
+        item["record_type"] = default_record_type(source)
+
+    if str(item.get("record_type")) == "trial_registry" or source == "clinicaltrials":
+        item["record_type"] = "trial_registry"
+        if str(item.get("evidence_level")) == "rct":
+            item["evidence_level"] = "other"
+        status = str(item.get("trial_status") or "")
+        _, eligible = classify_trial_registry(status)
+        item["citation_eligible"] = eligible
+    elif "citation_eligible" not in item:
+        item["citation_eligible"] = True
+    if not str(item.get("source_locator") or "").strip():
+        item["source_locator"] = str(item.get("url") or item.get("doc_id") or item.get("chunk_id") or "")
+    return item
 
 
 def _norm_doi(doi: str) -> str:
@@ -218,6 +296,8 @@ def enrich_levels_from_text(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
     for d in docs:
         if d.evidence_level != "other":
+            continue
+        if d.record_type == "trial_registry":
             continue
         blob = f"{d.title} {d.text}"[:3000].lower()
         for level, keys in _TEXT_LEVEL_KEYS.items():

@@ -60,6 +60,8 @@ def contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:
                 url=str(c.get("url") or ""),
                 evidence_level=str(c.get("evidence_level") or "other"),
                 snippet=str(c.get("text") or "")[:240],
+                record_type=str(c.get("record_type") or "other"),
+                trial_status=str(c.get("trial_status") or ""),
             )
         )
     return cites
@@ -174,6 +176,7 @@ def generate_answer(
         answer = answer.rstrip() + DISCLAIMER
         if stream_callback:
             stream_callback(DISCLAIMER)
+    answer = append_reference_section_if_needed(answer, citations)
     return answer, citations, False
 
 
@@ -266,16 +269,43 @@ def enforce_citation_density(
 
 
 def format_reference_section(citations: list[Citation]) -> str:
-    """
-    【待完善】按统一中文样式生成文末「参考文献」段落。
+    """按统一中文样式生成文末「参考文献」段落。"""
+    if not citations:
+        return ""
+    lines = ["\n\n---\n**参考文献**"]
+    for citation in citations:
+        title = citation.title or citation.doc_id or "未命名来源"
+        year = citation.year if citation.year not in (None, -1) else "年份未知"
+        level = citation.evidence_level or "other"
+        source = citation.source or "unknown"
+        record_note = ""
+        if citation.record_type == "trial_registry" or (
+            level == "other" and "clinicaltrials" in source
+        ):
+            status = citation.trial_status.strip()
+            record_note = "（试验注册，非发表疗效结果"
+            if status:
+                record_note += f"，状态：{status}"
+            record_note += "）"
+        lines.append(
+            f"[{citation.index}] {title}{record_note} · {level} · {source} · {year}"
+        )
+        if citation.url:
+            lines.append(f"    链接：{citation.url}")
+        snippet = (citation.snippet or "").strip()
+        if snippet:
+            lines.append(f"    摘要：{snippet[:180]}{'…' if len(snippet) > 180 else ''}")
+    return "\n".join(lines)
 
-    参数:
-        citations: Citation 列表。
 
-    返回:
-        str: 可直接拼接到回答末尾的参考文献 Markdown。
-
-    作用:
-        统一演示输出格式，便于评委核对。
-    """
-    raise NotImplementedError("待队员实现：format_reference_section")
+def append_reference_section_if_needed(answer: str, citations: list[Citation]) -> str:
+    """在回答末尾追加参考文献块（若尚未包含且确有证据条目）。"""
+    if not citations or "参考文献" in answer:
+        return answer
+    section = format_reference_section(citations)
+    disclaimer = DISCLAIMER.strip()
+    if disclaimer and disclaimer in answer:
+        idx = answer.rfind(disclaimer)
+        if idx >= 0:
+            return answer[:idx].rstrip() + section + "\n\n" + answer[idx:]
+    return answer.rstrip() + section

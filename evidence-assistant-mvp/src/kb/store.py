@@ -114,6 +114,7 @@ class EvidenceStore:
             metadatas: list[dict[str, Any]] = []
             documents: list[str] = []
             for c in batch:
+                extra = c.extra or {}
                 metadatas.append(
                     {
                         "doc_id": c.doc_id,
@@ -124,6 +125,10 @@ class EvidenceStore:
                         "tags": ",".join(c.tags),
                         "evidence_level": c.evidence_level,
                         "chunk_index": c.chunk_index,
+                        "record_type": c.record_type,
+                        "citation_eligible": bool(c.citation_eligible),
+                        "source_locator": (c.source_locator or c.doc_id)[:500],
+                        "trial_status": str(extra.get("status") or "")[:120],
                     }
                 )
                 documents.append(c.text)

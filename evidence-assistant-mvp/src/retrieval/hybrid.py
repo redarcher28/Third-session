@@ -12,11 +12,19 @@ from typing import Any
 from rank_bm25 import BM25Okapi
 
 from src.kb.store import EvidenceStore
+from src.ingest import normalize_retrieved_context
 from src.kb.weights import combined_priority
 from src.llm import get_llm
 from src.tracks.prompt_profiles import build_rerank_messages
 
 logger = logging.getLogger(__name__)
+
+# 试验注册：降权，避免与发表级 RCT 混淆
+RECORD_TYPE_WEIGHT = {
+    "trial_registry": 0.75,
+    "wiki_page": 1.05,
+    "published_article": 1.0,
+}
 
 # 证据等级加权系数（越大越优先）
 LEVEL_WEIGHT = {
@@ -28,6 +36,15 @@ LEVEL_WEIGHT = {
     "ebook": 1.0,
     "other": 1.0,
 }
+
+
+def _is_citable_for_level_boost(item: dict[str, Any]) -> bool:
+    """试验注册或未标记可引用的条目不享受 prefer_levels 加成。"""
+    if not item.get("citation_eligible", True):
+        return False
+    if str(item.get("record_type") or "") == "trial_registry":
+        return False
+    return True
 
 
 def _tokenize(text: str) -> list[str]:
@@ -133,12 +150,13 @@ class HybridRetriever:
         for item in merged.values():
             level = item.get("evidence_level", "other")
             item["score"] *= LEVEL_WEIGHT.get(str(level), 1.0)
-            if prefer_levels and level in prefer_levels:
+            record_type = str(item.get("record_type") or "other")
+            item["score"] *= RECORD_TYPE_WEIGHT.get(record_type, 1.0)
+            if prefer_levels and level in prefer_levels and _is_citable_for_level_boost(item):
                 item["score"] *= 1.15
             tags = str(item.get("tags") or "").split(",")
             if boost_tags and set(tags) & set(boost_tags):
                 item["score"] *= 1.2
-            # prefer wiki slightly for overview
             if str(item.get("source")) == "wiki":
                 item["score"] *= 1.05
 
@@ -161,7 +179,7 @@ class HybridRetriever:
             final.append(c)
             if len(final) >= top_k:
                 break
-        return final
+        return [normalize_retrieved_context(c) for c in final]
 
     def _bm25_search(self, query: str, top_n: int = 16) -> list[dict[str, Any]]:
         """关键词召回：返回 BM25 分数最高的 top_n 条。"""

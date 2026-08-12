@@ -16,7 +16,7 @@ from typing import Any
 import httpx
 
 from src.config import get_settings
-from src.ingest import normalize_evidence_level
+from src.ingest import normalize_evidence_level, normalize_evidence_metadata
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -121,18 +121,23 @@ def fetch_pubmed_docs(pmids: list[str]) -> list[EvidenceDoc]:
                     abstract = title
                 tags = _tags_from_text(f"{title} {abstract}")
                 docs.append(
-                    EvidenceDoc(
-                        doc_id=f"pmid:{pmid}",
-                        source="pubmed",
-                        title=title or f"PMID {pmid}",
-                        text=abstract,
-                        year=year,
-                        url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
-                        tags=tags,
-                        evidence_level=normalize_evidence_level(" ".join(pub_types), title),
-                        journal=journal,
-                        doi=doi,
-                        extra={"pub_types": pub_types},
+                    normalize_evidence_metadata(
+                        EvidenceDoc(
+                            doc_id=f"pmid:{pmid}",
+                            source="pubmed",
+                            title=title or f"PMID {pmid}",
+                            text=abstract,
+                            year=year,
+                            url=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                            tags=tags,
+                            evidence_level=normalize_evidence_level(" ".join(pub_types), title),
+                            journal=journal,
+                            doi=doi,
+                            record_type="published_article",
+                            citation_eligible=True,
+                            source_locator=f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                            extra={"pub_types": pub_types},
+                        )
                     )
                 )
             time.sleep(0.34)  # be polite to NCBI

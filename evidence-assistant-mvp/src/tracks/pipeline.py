@@ -61,6 +61,26 @@ OUT_OF_SCOPE = {
 }
 
 
+def _context_dict_to_citation(index: int, context: dict[str, Any]) -> Citation:
+    year = context.get("year")
+    try:
+        parsed_year = None if year in (None, -1, "-1") else int(year)
+    except (TypeError, ValueError):
+        parsed_year = None
+    return Citation(
+        index=index,
+        doc_id=str(context.get("doc_id") or context.get("chunk_id") or ""),
+        title=str(context.get("title") or ""),
+        source=str(context.get("source") or ""),
+        year=parsed_year,
+        url=str(context.get("url") or ""),
+        evidence_level=str(context.get("evidence_level") or "other"),
+        snippet=str(context.get("text") or "")[:240],
+        record_type=str(context.get("record_type") or "other"),
+        trial_status=str(context.get("trial_status") or ""),
+    )
+
+
 def _contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:
     """把已检索上下文转换为前端可展示的证据卡片。
 
@@ -68,31 +88,21 @@ def _contexts_to_citations(contexts: list[dict[str, Any]]) -> list[Citation]:
     “系统查到了什么、为什么不够”的证据面板。此前拒答分支把 contexts 清空，
     导致备用页和 Open WebUI 都只能显示一段文字，丢失了旧前端的来源卡片。
     """
-    cards: list[Citation] = []
-    for index, context in enumerate(contexts, start=1):
-        year = context.get("year")
-        try:
-            parsed_year = None if year in (None, -1, "-1") else int(year)
-        except (TypeError, ValueError):
-            parsed_year = None
-        cards.append(
-            Citation(
-                index=index,
-                doc_id=str(context.get("doc_id") or context.get("chunk_id") or ""),
-                title=str(context.get("title") or ""),
-                source=str(context.get("source") or ""),
-                year=parsed_year,
-                url=str(context.get("url") or ""),
-                evidence_level=str(context.get("evidence_level") or "other"),
-                snippet=str(context.get("text") or "")[:240],
-            )
-        )
-    return cards
+    return [_context_dict_to_citation(i, c) for i, c in enumerate(contexts, start=1)]
 
 
 def _tokenize(text: str) -> set[str]:
     """提取中英文词元集合，供重叠度计算。"""
     return set(re.findall(r"[\w\u4e00-\u9fff]+", text.lower()))
+
+
+def _qualifies_for_expected_levels(c: dict[str, Any], expect_levels: tuple[str, ...]) -> bool:
+    """试验注册不能充当 guideline/meta/rct 级证据。"""
+    if str(c.get("record_type") or "") == "trial_registry":
+        return False
+    if not c.get("citation_eligible", True):
+        return False
+    return str(c.get("evidence_level")) in expect_levels
 
 
 def _is_low_relevance(
@@ -134,7 +144,7 @@ def _is_low_relevance(
             return "low_relevance"
     if not contexts:
         return "low_relevance"
-    if expect_levels and not any(str(c.get("evidence_level")) in expect_levels for c in contexts):
+    if expect_levels and not any(_qualifies_for_expected_levels(c, expect_levels) for c in contexts):
         return "missing_evidence_type"
     return None
 

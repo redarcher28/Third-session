@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from src.ingest import classify_trial_registry, normalize_evidence_metadata
 from src.models import EvidenceDoc
 
 logger = logging.getLogger(__name__)
@@ -86,17 +87,23 @@ def search_trials(condition: str, page_size: int = 20) -> list[EvidenceDoc]:
         if outcome:
             text += f"\nPrimary Outcome: {outcome}"
         blob = f"{title} {text}"
+        level, eligible = classify_trial_registry(status)
         docs.append(
-            EvidenceDoc(
-                doc_id=f"nct:{nct}",
-                source="clinicaltrials",
-                title=title,
-                text=text[:8000],
-                year=year,
-                url=f"https://clinicaltrials.gov/study/{nct}",
-                tags=_tags(blob),
-                evidence_level="rct",
-                extra={"status": status, "conditions": conditions, "primary_outcome": outcome},
+            normalize_evidence_metadata(
+                EvidenceDoc(
+                    doc_id=f"nct:{nct}",
+                    source="clinicaltrials",
+                    title=title,
+                    text=text[:8000],
+                    year=year,
+                    url=f"https://clinicaltrials.gov/study/{nct}",
+                    tags=_tags(blob),
+                    evidence_level=level,
+                    record_type="trial_registry",
+                    citation_eligible=eligible,
+                    source_locator=f"https://clinicaltrials.gov/study/{nct}",
+                    extra={"status": status, "conditions": conditions, "primary_outcome": outcome},
+                )
             )
         )
     return docs

@@ -17,6 +17,15 @@ EvidenceLevel = Literal[
 ]
 # 数据来源名称
 SourceName = Literal["pubmed", "clinicaltrials", "europepmc", "local", "wiki"]
+# 记录类型：区分发表文献、试验注册、指南摘录等，避免「注册=RCT」混淆
+RecordType = Literal[
+    "published_article",
+    "trial_registry",
+    "guideline_excerpt",
+    "local_doc",
+    "wiki_page",
+    "other",
+]
 
 
 class EvidenceDoc(BaseModel):
@@ -32,6 +41,9 @@ class EvidenceDoc(BaseModel):
     evidence_level: EvidenceLevel = "other"  # 证据等级
     journal: str = ""  # 期刊名（可选）
     doi: str = ""  # DOI（可选）
+    record_type: RecordType = "other"  # 记录语义类型
+    citation_eligible: bool = True  # 是否可作为回答中的循证引用
+    source_locator: str = ""  # 稳定溯源键（URL 或 doc_id）
     extra: dict[str, Any] = Field(default_factory=dict)  # 扩展字段
 
 
@@ -48,6 +60,10 @@ class Chunk(BaseModel):
     tags: list[str] = Field(default_factory=list)
     evidence_level: EvidenceLevel = "other"
     chunk_index: int = 0  # 在原文档中的块序号
+    record_type: RecordType = "other"
+    citation_eligible: bool = True
+    source_locator: str = ""
+    extra: dict[str, Any] = Field(default_factory=dict)  # 来自 EvidenceDoc.extra 的检索侧车
 
 
 class Citation(BaseModel):
@@ -61,6 +77,8 @@ class Citation(BaseModel):
     url: str = ""
     evidence_level: str = "other"
     snippet: str = ""  # 摘要片段，供证据面板展示
+    record_type: str = "other"  # 记录语义类型（试验注册 vs 发表文献等）
+    trial_status: str = ""  # 临床试验状态（仅 trial_registry）
 
 
 class AskRequest(BaseModel):

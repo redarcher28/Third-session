@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 from src.config import get_settings
-from src.generation.answer import DISCLAIMER, generate_answer
+from src.generation.answer import DISCLAIMER, append_reference_section_if_needed, generate_answer
 from src.kb.chunking import docs_to_chunks
 from src.llm import get_llm
 from src.models import Citation
@@ -92,6 +92,8 @@ def _contexts_to_citation_list(contexts: list[dict[str, Any]]) -> list[Citation]
                 url=str(c.get("url") or ""),
                 evidence_level=str(c.get("evidence_level") or "other"),
                 snippet=str(c.get("text") or "")[:240],
+                record_type=str(c.get("record_type") or "other"),
+                trial_status=str(c.get("trial_status") or ""),
             )
         )
     return out
@@ -294,6 +296,8 @@ class ReactEvidenceAgent:
 
         check = verify_citations(final_answer, self.contexts)
         final_answer = strip_invalid_claims(final_answer, check)
+        citations = _contexts_to_citation_list(self.contexts)
+        final_answer = append_reference_section_if_needed(final_answer, citations)
         if self.track == "nutrition" and not refused:
             final_answer = simplify_medical_terms(final_answer)
             if flag_dosage_in_answer(final_answer):

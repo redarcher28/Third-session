@@ -5,6 +5,7 @@ const reactStepsEl = document.getElementById("reactSteps");
 const reactEmptyEl = document.getElementById("reactEmpty");
 const evidenceListEl = document.getElementById("evidenceList");
 const evidenceEmptyEl = document.getElementById("evidenceEmpty");
+const evidenceCountEl = document.getElementById("evidenceCount");
 const answerMetaPanel = document.getElementById("answerMetaPanel");
 const rewrittenQueryLine = document.getElementById("rewrittenQueryLine");
 const citationCheckLine = document.getElementById("citationCheckLine");
@@ -137,6 +138,92 @@ function appendBubble(role, content, { loading, refused } = {}) {
   return wrap;
 }
 
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>");
+}
+
+function renderAnswerHtml(reply, contexts, citationCheck) {
+  const indices = (contexts || []).map((c, i) => Number(c.index ?? i + 1));
+  const used = citationCheck?.used_brackets?.length
+    ? citationCheck.used_brackets.map(Number)
+    : indices;
+
+  const renderLine = (line) =>
+    line
+      .replace(/\[(\d+)\]/g, (full, num) => {
+        const n = Number(num);
+        if (!used.includes(n)) return escapeHtml(full);
+        return `<a class="cite-ref" href="#evidence-${n}" data-cite="${n}">${escapeHtml(full)}</a>`;
+      })
+      .split(/(<a class="cite-ref"[^>]*>\[[0-9]+\]<\/a>)/)
+      .map((part) => (part.startsWith('<a class="cite-ref"') ? part : renderInlineMarkdown(part)))
+      .join("");
+
+  const lines = String(reply || "").split(/\r?\n/);
+  const html = [];
+  let paragraph = [];
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    html.push(`<p>${paragraph.map(renderLine).join("<br />")}</p>`);
+    paragraph = [];
+  };
+
+  lines.forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      return;
+    }
+    if (trimmed === "---") {
+      flushParagraph();
+      html.push('<hr class="answer-divider" />');
+      return;
+    }
+    if (trimmed.startsWith("**参考文献**")) {
+      flushParagraph();
+      html.push(`<h4 class="answer-ref-title">${renderInlineMarkdown(trimmed)}</h4>`);
+      return;
+    }
+    if (/^\[\d+\]\s/.test(trimmed)) {
+      flushParagraph();
+      html.push(`<p class="answer-ref-line">${renderLine(trimmed)}</p>`);
+      return;
+    }
+    paragraph.push(trimmed);
+  });
+  flushParagraph();
+  return html.join("");
+}
+
+function scrollToEvidence(index) {
+  const el = document.getElementById(`evidence-${index}`);
+  if (!el) return;
+  el.open = true;
+  el.classList.add("evidence-expander--highlight");
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  window.setTimeout(() => el.classList.remove("evidence-expander--highlight"), 1600);
+}
+
+function bindCitationLinks(root) {
+  root?.querySelectorAll(".cite-ref").forEach((link) => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      const n = Number(link.getAttribute("data-cite"));
+      if (n) scrollToEvidence(n);
+    });
+  });
+}
+
+function renderAnswerBubble(bubble, reply, contexts, citationCheck) {
+  if (!bubble) return;
+  bubble.innerHTML = renderAnswerHtml(reply, contexts, citationCheck);
+  bindCitationLinks(bubble);
+}
+
 function formatDictCounts(obj) {
   if (!obj || typeof obj !== "object" || !Object.keys(obj).length) return "暂无";
   return Object.entries(obj)
@@ -220,28 +307,41 @@ function renderReactSteps(steps) {
   });
 }
 
-function renderEvidence(contexts) {
+function renderEvidence(contexts, citationCheck) {
   if (!evidenceListEl) return;
   evidenceListEl.innerHTML = "";
+  const usedSet = new Set((citationCheck?.used_brackets || []).map(Number));
   if (!contexts || !contexts.length) {
     if (evidenceEmptyEl) evidenceEmptyEl.style.display = "block";
+    if (evidenceCountEl) evidenceCountEl.textContent = "0 条";
     return;
   }
   if (evidenceEmptyEl) evidenceEmptyEl.style.display = "none";
+  if (evidenceCountEl) evidenceCountEl.textContent = `${contexts.length} 条`;
   contexts.forEach((c, i) => {
-    const idx = c.index ?? i + 1;
+    const idx = Number(c.index ?? i + 1);
     const title = c.title || "无标题";
     const level = c.evidence_level || "";
+    const recordType = c.record_type || "";
+    const trialStatus = c.trial_status || "";
+    let typeLabel = level;
+    if (recordType === "trial_registry") {
+      typeLabel = trialStatus ? `试验注册 · ${trialStatus}` : "试验注册";
+    }
+    const isCited = usedSet.size ? usedSet.has(idx) : true;
     const details = document.createElement("details");
-    details.className = "evidence-expander";
+    details.className = "evidence-expander" + (isCited ? " is-cited" : " is-retrieved-only");
+    details.id = `evidence-${idx}`;
     details.open = i === 0;
     const summary = document.createElement("summary");
-    summary.textContent = `[${idx}] ${title}${level ? ` (${level})` : ""}`;
+    const badge = isCited ? "已引用" : "仅检索";
+    summary.innerHTML = `<span class="evidence-index">[${idx}]</span> ${escapeHtml(title)}${typeLabel ? ` (${escapeHtml(typeLabel)})` : ""} <span class="evidence-tag">${badge}</span>`;
     const body = document.createElement("div");
     body.className = "evidence-expander-body";
     const meta = document.createElement("p");
     meta.className = "evidence-expander-meta";
-    meta.textContent = `来源：${c.source || "—"} · 年份：${c.year || "n/a"} · ${c.doc_id || ""}`;
+    const recordHint = recordType === "trial_registry" ? " · 非发表疗效结果" : "";
+    meta.textContent = `来源：${c.source || "—"} · 年份：${c.year || "n/a"} · ${c.doc_id || ""}${recordHint}`;
     body.appendChild(meta);
     if (c.url) {
       const link = document.createElement("a");
@@ -268,7 +368,7 @@ function showWelcome() {
   if (chatLog) chatLog.innerHTML = "";
   appendBubble("assistant", msg);
   renderReactSteps([]);
-  renderEvidence([]);
+  renderEvidence([], null);
   renderAnswerMeta({});
   if (retrievalExpander) retrievalExpander.hidden = true;
 }
@@ -324,15 +424,16 @@ async function sendMessage() {
       throw new Error(typeof err === "string" ? err : `HTTP ${resp.status}`);
     }
     const reply = data.reply || "";
+    const contexts = data.contexts || data.citations || [];
     transcript.push({ role: "assistant", content: reply });
     const bubble = pending?.querySelector(".consult-bubble");
     if (bubble) {
       bubble.classList.remove("consult-loading");
       if (data.refused) bubble.classList.add("consult-bubble--refused");
-      bubble.innerHTML = escapeHtml(reply);
+      renderAnswerBubble(bubble, reply, contexts, data.citation_check);
     }
     renderReactSteps(data.steps || []);
-    renderEvidence(data.contexts || data.citations || []);
+    renderEvidence(contexts, data.citation_check);
     renderAnswerMeta(data);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
