@@ -108,6 +108,11 @@ def build_kb(
         _run_ingest(skip_live=True)
         docs = load_docs(settings.processed_path / "documents.json")
 
+    if skip_ingest:
+        # 跳过采集时 documents.json 不会改写，仍刷新报告以反映最新质量统计逻辑。
+        report = export_ingest_report(docs, settings.processed_path / "ingest_report.md")
+        logger.info("Refreshed ingest report -> %s", report)
+
     wiki_docs = generate_wiki_pages(docs)
     save_docs(wiki_docs, settings.processed_path / "wiki_docs.json")
     all_docs = merge_docs(docs, wiki_docs)

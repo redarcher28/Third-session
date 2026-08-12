@@ -207,6 +207,8 @@ _TEXT_LEVEL_KEYS: dict[str, list[str]] = {
     "observational": ["cohort", "observational", "case-control", "队列", "横断面", "观察性"],
 }
 
+_HIGH_EVIDENCE_LEVELS = frozenset({"guideline", "meta", "rct"})
+
 
 def enrich_levels_from_text(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
     """
@@ -229,7 +231,7 @@ def enrich_levels_from_text(docs: list[EvidenceDoc]) -> list[EvidenceDoc]:
 
 def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
     """
-    导出采集质量报告（来源分布、年份分布、缺摘要比例等）。
+    导出采集质量报告（覆盖率、可追溯性、重复候选和专题证据覆盖）。
 
     参数:
         docs: 已采集文档列表。
@@ -249,6 +251,76 @@ def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
     no_text = [d.doc_id for d in docs if not (d.text or "").strip()]
     no_year = sum(1 for d in docs if d.year is None)
     with_doi = sum(1 for d in docs if d.doi)
+    with_url = sum(1 for d in docs if d.url)
+    with_journal = sum(1 for d in docs if d.journal)
+    with_source_type = sum(1 for d in docs if d.extra.get("source_type"))
+    with_evidence_role = sum(1 for d in docs if d.extra.get("evidence_role"))
+    with_collection_marker = sum(1 for d in docs if d.extra.get("collection_batch"))
+    with_curated_tag = sum(1 for d in docs if "curated" in d.tags)
+
+    pmid_count = sum(
+        1
+        for d in docs
+        if d.doc_id.lower().startswith("pmid:") or d.extra.get("pmid")
+    )
+    nct_count = sum(
+        1
+        for d in docs
+        if d.doc_id.lower().startswith("nct:") or d.extra.get("nct")
+    )
+    pmcid_count = sum(
+        1
+        for d in docs
+        if d.doc_id.lower().startswith("pmcid:") or d.extra.get("pmcid")
+    )
+    traceable_count = sum(
+        1
+        for d in docs
+        if d.url
+        or d.doi
+        or d.doc_id.lower().startswith(("pmid:", "nct:", "pmcid:"))
+        or d.extra.get("pmid")
+        or d.extra.get("nct")
+        or d.extra.get("pmcid")
+    )
+
+    roles = Counter(
+        str(d.extra.get("evidence_role")).strip()
+        for d in docs
+        if d.extra.get("evidence_role")
+    )
+    source_types = Counter(
+        str(d.extra.get("source_type")).strip()
+        for d in docs
+        if d.extra.get("source_type")
+    )
+
+    doi_groups: dict[str, list[str]] = {}
+    title_groups: dict[str, list[str]] = {}
+    for d in docs:
+        normalized_doi = _norm_doi(d.doi) if d.doi else ""
+        normalized_title = _norm_title(d.title) if d.title else ""
+        if normalized_doi:
+            doi_groups.setdefault(normalized_doi, []).append(d.doc_id)
+        if normalized_title:
+            title_groups.setdefault(normalized_title, []).append(d.doc_id)
+    duplicate_doi_groups = [ids for ids in doi_groups.values() if len(ids) > 1]
+    duplicate_title_groups = [ids for ids in title_groups.values() if len(ids) > 1]
+
+    topic_quality: dict[str, Counter[str]] = {}
+    for d in docs:
+        for tag in d.tags:
+            counts = topic_quality.setdefault(tag, Counter())
+            counts["total"] += 1
+            if d.evidence_level in _HIGH_EVIDENCE_LEVELS:
+                counts["high"] += 1
+            counts[str(d.evidence_level)] += 1
+    top_topic_tags = tags.most_common(20)
+    gap_tags = [
+        (tag, count)
+        for tag, count in tags.most_common()
+        if count >= 5 and topic_quality[tag]["high"] == 0
+    ]
 
     def pct(n: int) -> str:
         return f"{n / total * 100:.1f}%" if total else "0.0%"
@@ -267,7 +339,9 @@ def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
         f"- 年份覆盖: {year_range}",
         f"- 缺摘要比例: {len(no_text)}/{total} ({pct(len(no_text))})",
         f"- 缺年份比例: {no_year}/{total} ({pct(no_year)})",
+        f"- URL 覆盖率: {with_url}/{total} ({pct(with_url)})",
         f"- DOI 覆盖率: {with_doi}/{total} ({pct(with_doi)})",
+        f"- 可追溯标识覆盖率: {traceable_count}/{total} ({pct(traceable_count)})",
         "",
         "## 来源分布",
         "",
@@ -306,6 +380,81 @@ def export_ingest_report(docs: list[EvidenceDoc], out_path: Path) -> Path:
     lines += [
         f"| {t} | {n} | {pct(n)} |" for t, n in tags.most_common(10)
     ]
+    lines += [
+        "",
+        "## 可追溯性与元数据覆盖",
+        "",
+        f"- PMID 标识: {pmid_count}/{total} ({pct(pmid_count)})",
+        f"- NCT 标识: {nct_count}/{total} ({pct(nct_count)})",
+        f"- PMCID 标识: {pmcid_count}/{total} ({pct(pmcid_count)})",
+        f"- 期刊字段覆盖率: {with_journal}/{total} ({pct(with_journal)})",
+        f"- source_type 字段覆盖率: {with_source_type}/{total} ({pct(with_source_type)})",
+        f"- evidence_role 字段覆盖率: {with_evidence_role}/{total} ({pct(with_evidence_role)})",
+        f"- collection_batch 标记: {with_collection_marker}/{total} ({pct(with_collection_marker)})",
+        f"- curated 标签: {with_curated_tag}/{total} ({pct(with_curated_tag)})",
+        "",
+        "## 证据角色分布",
+        "",
+        "| 角色 | 条数 | 占比 |",
+        "|---|---|---|",
+    ]
+    lines += (
+        [f"| {role} | {count} | {pct(count)} |" for role, count in roles.most_common()]
+        if roles
+        else ["| 未标注 | 0 | 0.0% |"]
+    )
+    lines += [
+        "",
+        "## source_type 分布（Top 10）",
+        "",
+        "| 类型 | 条数 | 占比 |",
+        "|---|---|---|",
+    ]
+    lines += (
+        [f"| {kind} | {count} | {pct(count)} |" for kind, count in source_types.most_common(10)]
+        if source_types
+        else ["| 未标注 | 0 | 0.0% |"]
+    )
+    lines += [
+        "",
+        "## 重复候选检查",
+        "",
+        f"- 重复 DOI 组: {len(duplicate_doi_groups)} 组，涉及 {sum(map(len, duplicate_doi_groups))} 条文档",
+        f"- 重复标准化标题组: {len(duplicate_title_groups)} 组，涉及 {sum(map(len, duplicate_title_groups))} 条文档",
+    ]
+    if duplicate_doi_groups:
+        lines += ["", "### 重复 DOI 样例（最多 5 组）", ""]
+        lines += [f"- {', '.join(ids)}" for ids in duplicate_doi_groups[:5]]
+    if duplicate_title_groups:
+        lines += ["", "### 重复标题样例（最多 5 组）", ""]
+        lines += [f"- {', '.join(ids)}" for ids in duplicate_title_groups[:5]]
+    lines += [
+        "",
+        "## 专题高等级证据覆盖（Top 20 标签）",
+        "",
+        "高等级证据包括 guideline、meta、rct；该表用于定位专题证据链的覆盖情况。",
+        "",
+        "| 标签 | 总条数 | guideline | meta | rct | 高等级合计 |",
+        "|---|---|---|---|---|---|",
+    ]
+    lines += [
+        (
+            f"| {tag} | {count} | {topic_quality[tag]['guideline']} | "
+            f"{topic_quality[tag]['meta']} | {topic_quality[tag]['rct']} | "
+            f"{topic_quality[tag]['high']} |"
+        )
+        for tag, count in top_topic_tags
+    ]
+    lines += ["", "## 待补强标签", ""]
+    if gap_tags:
+        lines += [
+            "以下标签至少有 5 条文档，但尚无 guideline/meta/rct 级证据；"
+            "它们是后续人工核验与补库的候选，不代表结论无证据。",
+            "",
+        ]
+        lines += [f"- {tag}: {count} 条" for tag, count in gap_tags[:20]]
+    else:
+        lines.append("- 未发现同时满足“至少 5 条文档且无高等级证据”的标签。")
     if no_text:
         lines += ["", "## 缺摘要文档", ""]
         lines += [f"- {doc_id}" for doc_id in no_text[:20]]
