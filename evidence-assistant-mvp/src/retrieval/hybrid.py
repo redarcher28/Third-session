@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-混合检索：向量召回 + BM25 关键词 + 证据等级加权 + 可选 LLM 重排。
+混合检索：向量召回 + BM25 关键词 + 统一证据优先级加权 + 可选 LLM 重排。
 """
 
 from __future__ import annotations
@@ -12,21 +12,10 @@ from typing import Any
 from rank_bm25 import BM25Okapi
 
 from src.kb.store import EvidenceStore
+from src.kb.weights import combined_priority
 from src.llm import get_llm
 
 logger = logging.getLogger(__name__)
-
-# 证据等级加权系数（越大越优先）
-LEVEL_WEIGHT = {
-    "guideline": 1.25,
-    "meta": 1.2,
-    "rct": 1.15,
-    "observational": 1.05,
-    "wiki": 1.1,
-    "ebook": 1.0,
-    "other": 1.0,
-}
-
 
 def _tokenize(text: str) -> list[str]:
     """
@@ -121,7 +110,8 @@ class HybridRetriever:
         prefer_levels = prefer_levels or []
         for item in merged.values():
             level = item.get("evidence_level", "other")
-            item["score"] *= LEVEL_WEIGHT.get(str(level), 1.0)
+            # 唯一权重入口在 kb.weights，避免采集/知识库/检索层各自维护等级表。
+            item["score"] *= score_evidence_priority(item)
             if prefer_levels and level in prefer_levels:
                 item["score"] *= 1.15
             tags = str(item.get("tags") or "").split(",")
@@ -215,24 +205,28 @@ class HybridRetriever:
 
 
 # ---------------------------------------------------------------------------
-# 【待完善】增强检索型 RAG（只定义签名与备注，不写函数体）
+# 增强检索型 RAG 工具函数
 # ---------------------------------------------------------------------------
 
 
 def score_evidence_priority(item: dict[str, Any]) -> float:
     """
-    【待完善】按证据等级给单条结果打优先级分。
-
     参数:
-        item: 检索结果 dict，至少含 evidence_level。
+        item: 检索结果 dict，至少含 evidence_level，可选 year。
 
     返回:
-        float: 权重分，越大越优先（建议指南>荟萃>RCT>观察>其他）。
+        float: 统一优先级分，越大越优先。
 
     作用:
         供临床赛道加权排序，突出高质量证据。
     """
-    raise NotImplementedError("待队员实现：score_evidence_priority")
+    raw_year = item.get("year")
+    try:
+        year = int(raw_year) if raw_year not in (None, "", -1) else None
+    except (TypeError, ValueError):
+        year = None
+
+    return combined_priority(str(item.get("evidence_level") or "other"), year)
 
 
 def filter_by_year_range(

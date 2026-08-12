@@ -22,9 +22,10 @@ EVIDENCE_LEVEL_WEIGHTS: dict[str, float] = {
 }
 
 
-def evidence_priority(level: str) -> float:
-    """按证据等级取基础权重，未知等级给最低分。"""
-    return EVIDENCE_LEVEL_WEIGHTS.get(level, EVIDENCE_LEVEL_WEIGHTS["other"])
+def evidence_priority(level: str | None) -> float:
+    """按证据等级取基础权重，未知或空等级给最低分。"""
+    normalized = str(level or "other").strip().lower()
+    return EVIDENCE_LEVEL_WEIGHTS.get(normalized, EVIDENCE_LEVEL_WEIGHTS["other"])
 
 
 def recency_weight(
