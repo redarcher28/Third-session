@@ -6,7 +6,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .mypy_cache/
-data/chroma/
 data/raw/*.json
 !data/raw/local/
 data/processed/documents.json
@@ -16,5 +15,4 @@ data/processed/wiki/*.md
 data/eval/results/
 *.egg-info/
 .webui_secret_key
-data/processed/bm25_corpus.json
 .DS_Store

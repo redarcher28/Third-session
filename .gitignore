@@ -217,8 +217,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Generated local RAG index. Rebuild from data/processed with scripts/build_kb.py.
-/evidence-assistant-mvp/data/chroma/
-
 # macOS Finder metadata.
 .DS_Store
