@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 
 from src.generation.answer import append_reference_section_if_needed, finalize_grounded_answer
-from src.kb.health import kb_health_report, probe_retrieval_index
+from src.kb.health import kb_health_report, probe_retrieval_index, probe_sqlite_integrity
 from src.models import Citation
 from src.tools.cite_check import answer_body_for_citation_check, verify_citations
 
@@ -17,7 +17,14 @@ class KbHealthTests(unittest.TestCase):
         self.assertIn(report["status"], {"ok", "degraded"})
         self.assertIn("chroma", report)
         self.assertIn("retrieval", report)
+        self.assertIn("sqlite", report)
+        self.assertIn("warnings", report)
 
+    def test_sqlite_probe_has_structured_result(self) -> None:
+        probe = probe_sqlite_integrity()
+        self.assertIn("ok", probe)
+        self.assertIn("warning", probe)
+        self.assertIn("error", probe)
     def test_retrieval_index_uses_full_bm25_limit(self) -> None:
         probe = probe_retrieval_index()
         self.assertIn("bm25_indexed_count", probe)

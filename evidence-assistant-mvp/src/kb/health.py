@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib.metadata
 import json
 import logging
+import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -135,18 +136,49 @@ def probe_retrieval_index() -> dict[str, Any]:
     }
 
 
+def probe_sqlite_integrity() -> dict[str, Any]:
+    """Read-only SQLite integrity probe for the Chroma catalog.
+
+    The functional Chroma probe remains authoritative for count/get/vector-query.
+    On large Chroma 1.5.9 stores, SQLite 3.51 can report an FTS5 inverted-index
+    diagnostic even while FTS MATCH and Chroma retrieval work. Surface that
+    specific condition as a warning; other SQLite failures remain hard failures.
+    """
+    path = get_settings().chroma_path / "chroma.sqlite3"
+    if not path.exists():
+        return {"ok": False, "warning": None, "error": "sqlite_catalog_missing"}
+    try:
+        con = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            result = str(con.execute("PRAGMA integrity_check").fetchone()[0])
+        finally:
+            con.close()
+    except sqlite3.Error as exc:
+        return {"ok": False, "warning": None, "error": f"sqlite_open:{type(exc).__name__}"}
+    if result == "ok":
+        return {"ok": True, "warning": None, "error": None}
+    if "FTS5 table" in result and "malformed inverted index" in result:
+        return {"ok": True, "warning": "sqlite_fts5_integrity_diagnostic", "error": None}
+    return {"ok": False, "warning": None, "error": f"sqlite_integrity:{result}"}
+
 def kb_health_report() -> dict[str, Any]:
     """汇总 /health 与 /kb/stats 共用的健康报告。"""
     chroma = probe_chroma()
     retrieval = probe_retrieval_index()
     manifest = validate_index_manifest(chroma["store_count"])
+    sqlite = probe_sqlite_integrity()
     degraded_reasons: list[str] = []
+    warnings: list[str] = []
     if not chroma["chroma_ok"]:
         degraded_reasons.append("chroma_unavailable")
     if chroma["store_count"] == 0 and retrieval["bm25_cache_total"] == 0:
         degraded_reasons.append("empty_knowledge_base")
     if not retrieval["bm25_index_complete"]:
         degraded_reasons.append("bm25_partial_index")
+    if not sqlite["ok"]:
+        degraded_reasons.append(str(sqlite["error"] or "sqlite_integrity_failed"))
+    elif sqlite["warning"]:
+        warnings.append(str(sqlite["warning"]))
     if manifest and not manifest["ok"]:
         reasons = list(manifest.get("reasons") or [])
         if not reasons and manifest.get("reason"):
@@ -157,7 +189,9 @@ def kb_health_report() -> dict[str, Any]:
     return {
         "status": status,
         "degraded_reasons": degraded_reasons,
+        "warnings": warnings,
         "chroma": chroma,
         "retrieval": retrieval,
         "manifest": manifest,
+        "sqlite": sqlite,
     }
