@@ -70,26 +70,35 @@ def api_ask(req: AskRequest) -> AskResponse:
     )
 
 
+@app.post("/ask/batch", response_model=list[AskResponse])
+def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
+    """
+    批量问答接口（评测预跑/压测演示用）。
+
+    请求体:
+        list[AskRequest]: 与 /ask 相同的请求结构数组。
+
+    返回:
+        list[AskResponse]: 与输入顺序一致的回答列表（空问题跳过）。
+    """
+    items = [q for q in questions if q.question and q.question.strip()]
+    if not items:
+        raise HTTPException(400, "all questions are empty")
+    return [
+        ask(
+            q.question.strip(),
+            track=q.track,
+            top_k=q.top_k,
+            use_live_tools=q.use_live_tools,
+        )
+        for q in items
+    ]
+
+
 @app.post("/eval/run")
 def api_eval_run() -> dict:
     """触发完整评测，返回 summary + results。"""
     return run_benchmark()
-
-
-def api_ask_batch(questions: list[AskRequest]) -> list[AskResponse]:
-    """
-    【待完善】批量问答接口逻辑（可用于评测预跑或压力演示）。
-
-    参数:
-        questions: AskRequest 列表。
-
-    返回:
-        list[AskResponse]: 与输入顺序对应的回答列表。
-
-    作用:
-        减少逐条 HTTP 往返，方便脚本化评测。
-    """
-    raise NotImplementedError("待队员实现：api_ask_batch")
 
 
 @app.get("/kb/stats")

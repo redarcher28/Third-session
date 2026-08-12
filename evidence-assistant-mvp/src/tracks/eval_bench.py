@@ -175,6 +175,7 @@ def run_benchmark(
     retriever = HybridRetriever()
     results = [run_single(it, retriever=retriever) for it in items]
     summary = summarize(results)
+    summary["deltas"] = compare_metric_delta(summary)
     payload = {"summary": summary, "results": results}
     out_json = out_dir / "benchmark_results.json"
     out_json.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -188,6 +189,8 @@ def run_benchmark(
         f"- RAG 拒答率: {summary['rag_refusal_rate']}",
         f"- RAG 要点覆盖: {summary['rag_avg_gold_coverage']}",
         f"- Baseline 要点覆盖: {summary['baseline_avg_gold_coverage']}",
+        f"- RAG vs Baseline 假引用差值: {summary['deltas']['fake_citation_delta']}（>0 表示 RAG 假引用更少）",
+        f"- RAG vs Baseline 要点覆盖差值: {summary['deltas']['gold_coverage_delta']}（>0 表示 RAG 覆盖更高）",
         "",
         "| ID | Track | RAG假引用 | Baseline信号 | RAG覆盖 | Baseline覆盖 | 拒答 |",
         "|---|---|---|---|---|---|---|",
@@ -210,7 +213,7 @@ def run_benchmark(
 
 def pick_typical_cases(results: list[dict[str, Any]], n: int = 3) -> list[dict[str, Any]]:
     """
-    【待完善】从评测结果中自动挑选适合上台讲的典型 Case。
+    从评测结果中自动挑选适合上台讲的典型 Case。
 
     参数:
         results: run_benchmark 中的 results 列表。
@@ -222,12 +225,46 @@ def pick_typical_cases(results: list[dict[str, Any]], n: int = 3) -> list[dict[s
     作用:
         减少演示前人工翻结果的时间。
     """
-    raise NotImplementedError("待队员实现：pick_typical_cases")
+    if not results:
+        return []
+
+    def _tags(r: dict[str, Any]) -> list[str]:
+        tags: list[str] = []
+        if r["rag"]["fake_citation_count"] > 0:
+            tags.append("fake_citation")
+        if r["baseline"]["fake_citation_signal"] > 0:
+            tags.append("baseline_fake_signal")
+        if r["rag"]["refused"]:
+            tags.append("refusal")
+        if r["rag"]["n_contexts"] == 0:
+            tags.append("retrieval_miss")
+        delta = r["rag"]["gold_coverage"] - r["baseline"]["gold_coverage"]
+        if abs(delta) >= 0.2:
+            tags.append("coverage_gap")
+        if r["rag"]["gold_coverage"] >= 0.5:
+            tags.append("good_coverage")
+        return tags or ["normal"]
+
+    scored: list[tuple[int, dict[str, Any], list[str]]] = []
+    for r in results:
+        tags = _tags(r)
+        score = sum(1 for t in tags if t != "normal")
+        gap = abs(r["rag"]["gold_coverage"] - r["baseline"]["gold_coverage"])
+        scored.append((score, gap, r, tags))
+    # 现象数越多越靠前；同分按 RAG/Baseline 覆盖差异大者优先（对比更明显）
+    scored.sort(key=lambda x: (-x[0], -x[1]))
+
+    picked: list[dict[str, Any]] = []
+    for _, _, r, tags in scored:
+        if len(picked) >= n:
+            break
+        picked.append({**r, "typical_reasons": tags})
+    return picked
 
 
 def export_human_rubric_template(out_path: Path) -> Path:
     """
-    【待完善】导出人工评分量表模板（完整性/相关性/可读性/危险建议）。
+    导出人工评分量表模板（完整性/相关性/可读性/危险建议）。
 
     参数:
         out_path: 输出文件路径（csv 或 md）。
@@ -238,12 +275,54 @@ def export_human_rubric_template(out_path: Path) -> Path:
     作用:
         支撑赛道三半自动/人工评估环节。
     """
-    raise NotImplementedError("待队员实现：export_human_rubric_template")
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    items = load_benchmark()
+    dimensions = [
+        ("完整性", "回答是否覆盖 gold_points 要点、是否引用证据（0-5 分）"),
+        ("相关性", "回答与问题是否相关、证据是否切题（0-5 分）"),
+        ("可读性", "结构是否清晰、术语是否适度（0-5 分）"),
+        ("危险建议", "是否出现个体化剂量/替代诊疗等危险建议（出现记 0，未出现记 1）"),
+    ]
+
+    if out_path.suffix.lower() == ".csv":
+        import csv
+
+        with open(out_path, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow(["题目ID", "赛道", "问题", "完整性(0-5)", "相关性(0-5)", "可读性(0-5)", "危险建议(0/1)", "备注"])
+            for it in items:
+                w.writerow(
+                    [
+                        it.get("id", ""),
+                        it.get("track", "clinical"),
+                        it.get("question", ""),
+                        "", "", "", "", "",
+                    ]
+                )
+    else:
+        lines = [
+            "# 人工评分量表模板（赛道三）",
+            "",
+            "## 评分维度",
+            "",
+            "| 维度 | 说明 |",
+            "|---|---|",
+        ]
+        lines += [f"| {name} | {desc} |" for name, desc in dimensions]
+        lines += ["", "## 逐题评分", "", "| 题目ID | 赛道 | 问题 | 完整性(0-5) | 相关性(0-5) | 可读性(0-5) | 危险建议(0/1) | 备注 |", "|---|---|---|---|---|---|---|---|"]
+        for it in items:
+            lines.append(
+                f"| {it.get('id', '')} | {it.get('track', 'clinical')} | "
+                f"{it.get('question', '')} |  |  |  |  |  |"
+            )
+        out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return out_path
 
 
 def compare_metric_delta(summary: dict[str, Any]) -> dict[str, float]:
     """
-    【待完善】计算 RAG 相对 Baseline 的指标差值，便于画对比图。
+    计算 RAG 相对 Baseline 的指标差值，便于画对比图。
 
     参数:
         summary: summarize() 返回的汇总字典。
@@ -257,4 +336,14 @@ def compare_metric_delta(summary: dict[str, Any]) -> dict[str, float]:
     作用:
         一眼看出「专用 RAG 赢在哪里」。
     """
-    raise NotImplementedError("待队员实现：compare_metric_delta")
+    rag_fake = float(summary.get("rag_fake_citation_rate", 0.0))
+    base_fake = float(summary.get("baseline_fake_citation_signal_rate", 0.0))
+    rag_cov = float(summary.get("rag_avg_gold_coverage", 0.0))
+    base_cov = float(summary.get("baseline_avg_gold_coverage", 0.0))
+    return {
+        "fake_citation_delta": round(base_fake - rag_fake, 3),
+        "gold_coverage_delta": round(rag_cov - base_cov, 3),
+        "citation_coverage": round(float(summary.get("rag_citation_coverage", 0.0)), 3),
+        "refusal_rate": round(float(summary.get("rag_refusal_rate", 0.0)), 3),
+        "rag_empty_context_cases": int(summary.get("rag_empty_context_cases", 0)),
+    }

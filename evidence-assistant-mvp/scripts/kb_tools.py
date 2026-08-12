@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 def cmd_stats(out: Path | None) -> None:
     """导出知识库统计并打印摘要。"""
-    target = out or (Path("data") / "processed" / "store_stats")
+    target = out or (Path("data") / "processed" / "store_stats.json")
     stats = export_store_stats(target)
     print(
         f"知识库统计: chunk={stats['count']} 去重后文档={stats['docs_covered']}\n"

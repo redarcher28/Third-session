@@ -65,16 +65,21 @@ Copy-Item packaging\pybase64.py .venv\Lib\site-packages\pybase64.py   # Windows
 
 > 说明：`chromadb` 1.5.x 仅在包元数据中声明依赖 `pybase64`，代码里实际只用标准库可替代的两个函数，垫片不影响任何功能。`fastapi` 不能低于 0.116、`starlette` 不能低于 0.46，否则新版 streamlit 启动会报 `DEFAULT_EXCLUDED_CONTENT_TYPES` 导入错误。若条件允许，直接安装 **Python 3.12** 也可以绕开上述问题（pybase64 与 chroma-hnswlib 均有 3.12 预编译包）。
 
-编辑 `.env`，填入 OpenAI 兼容接口：
+编辑 `.env`，填入 OpenAI 兼容接口（聊天用 DeepSeek / OpenAI 等）：
 
 ```env
 LLM_API_KEY=sk-...
-LLM_BASE_URL=https://api.openai.com/v1
-LLM_MODEL=gpt-4o-mini
-EMBEDDING_MODEL=text-embedding-3-small
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_MODEL=deepseek-chat
+EMBEDDING_MODEL=BAAI/bge-small-zh-v1.5
 ```
 
-未配置有效 key 时会进入**离线占位模式**（哈希 embedding + 模板回答），仍可演示全流程。
+向量化说明：
+- 默认使用本地 `fastembed` 跑 **BAAI/bge-small-zh-v1.5**（中文语义向量，免费离线，首次会自动下载模型到 `data/cache/fastembed`）；
+- 若想换国内向量服务商，在 `.env` 填 `EMBEDDING_API_KEY` / `EMBEDDING_BASE_URL`（如硅基流动 `https://api.siliconflow.cn/v1` + `EMBEDDING_MODEL=BAAI/bge-m3`、阿里 DashScope `text-embedding-v4`、智谱 `embedding-3`）；
+- 聊天 key 未配置时进入**离线占位模式**（模板回答），仍可演示检索流程。
+
+> 切换向量模型后必须重建知识库：`python scripts/kb_tools.py rebuild`（不同模型向量维度不同）。
 
 ### 1. 构建知识库
 
@@ -114,6 +119,7 @@ streamlit run src/app/ui.py
 # FastAPI
 uvicorn src.app.api:app --reload --port 8000
 # POST /ask  {"question":"...","track":"clinical"}
+# POST /ask/batch  [{"question":"...","track":"clinical"}, ...]
 # POST /eval/run
 ```
 

@@ -19,6 +19,7 @@ from src.generation.answer import (
     generate_answer,
 )
 from src.kb.chunking import docs_to_chunks
+from src.llm import get_llm
 from src.models import AskResponse, Citation
 from src.retrieval.hybrid import (
     HybridRetriever,
@@ -253,6 +254,49 @@ def _retrieve_fused(
     return items[:top_k]
 
 
+def _retrieve_wiki_first(
+    retriever: HybridRetriever,
+    queries: list[str],
+    *,
+    top_k: int,
+    prefer_levels: list[str] | None,
+    boost_tags: list[str] | None,
+) -> list[dict[str, Any]]:
+    """
+    Wiki 优先两级检索：先主题总览（source=wiki），再原文证据。
+
+    与 _retrieve_fused 的区别：
+        - 有真实向量服务时先走 select_wiki_then_chunks 拿主题页总览；
+        - 再把多路融合结果并入去重，wiki 页排最前，原文按分数排序；
+        - 向量服务不可用时直接退化为原多路融合检索（不引入哈希噪声）。
+    """
+    wiki_items: list[dict[str, Any]] = []
+    if get_llm().embedding_available:
+        try:
+            from src.kb.wiki import select_wiki_then_chunks
+
+            wiki_items = select_wiki_then_chunks(queries[0], wiki_k=1, chunk_k=top_k)
+        except Exception as e:
+            logger.warning("wiki-first retrieval failed, fallback to fused: %s", e)
+            wiki_items = []
+    fused = _retrieve_fused(
+        retriever,
+        queries,
+        top_k=top_k,
+        prefer_levels=prefer_levels,
+        boost_tags=boost_tags,
+    )
+    merged: dict[str, dict[str, Any]] = {}
+    for it in [*wiki_items, *fused]:
+        cid = str(it.get("chunk_id") or it.get("doc_id") or "")
+        if cid and cid not in merged:
+            merged[cid] = it
+    wiki = [it for it in merged.values() if it.get("kind") == "wiki"]
+    evidence = [it for it in merged.values() if it.get("kind") != "wiki"]
+    evidence.sort(key=lambda x: float(x.get("score") or 0.0), reverse=True)
+    return (wiki + evidence)[: max(top_k, 1)]
+
+
 def ask(
     question: str,
     track: str = "clinical",
@@ -309,7 +353,7 @@ def ask(
         persona, style = CLINICAL_PERSONA, CLINICAL_STYLE
         prefer, boost = PREFER_LEVELS, None
 
-    contexts = _retrieve_fused(
+    contexts = _retrieve_wiki_first(
         retriever,
         [rewritten, question],
         top_k=top_k,

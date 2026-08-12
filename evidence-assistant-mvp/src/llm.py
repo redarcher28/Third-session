@@ -24,6 +24,9 @@ from src.config import get_settings
 
 logger = logging.getLogger(__name__)
 
+# 本地向量模型（无 EMBEDDING_API_KEY 时使用 fastembed 本地跑 BAAI/bge 中文语义向量）
+LOCAL_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"
+
 
 class LLMClient:
     """轻量聊天 + Embedding 客户端。"""
@@ -48,6 +51,35 @@ class LLMClient:
             base_url=settings.embedding_base_url or settings.llm_base_url,
         )
         self._embedding_available = settings.embedding_available
+        # 未配置国内向量服务时，尝试用本地 fastembed 提供真实向量（BGE 中文模型）
+        self._local_embedder = None
+        if not self._embedding_available:
+            self._init_local_embedder()
+
+    def _init_local_embedder(self) -> None:
+        """
+        加载本地 fastembed 向量模型（免费离线，无需 API Key）。
+
+        说明:
+            - 模型名优先取 EMBEDDING_MODEL（若为 BAAI/ 或 bge 开头），否则用默认 bge-small-zh；
+            - 模型缓存在 data/cache/fastembed（已被 gitignore）；
+            - 加载失败时保持哈希占位向量，检索链路不中断。
+        """
+        try:
+            from fastembed import TextEmbedding
+
+            settings = get_settings()
+            model = settings.embedding_model
+            if not (model.startswith("BAAI/") or model.lower().startswith("bge")):
+                model = LOCAL_EMBEDDING_MODEL
+            cache_dir = PROJECT_ROOT / "data" / "cache" / "fastembed"
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            self._local_embedder = TextEmbedding(model_name=model, cache_dir=str(cache_dir))
+            self._embedding_available = True
+            logger.info("Local fastembed vectorizer ready: %s", model)
+        except Exception as e:
+            self._local_embedder = None
+            logger.warning("fastembed unavailable (%s); embeddings fall back to hash", e)
 
     @property
     def is_offline(self) -> bool:
@@ -101,6 +133,15 @@ class LLMClient:
         """
         if not texts:
             return []
+        if self._local_embedder is not None:
+            try:
+                return [
+                    list(map(float, v))
+                    for v in self._local_embedder.embed(list(texts))
+                ]
+            except Exception as e:
+                logger.warning("local embedding failed (%s); fallback to hash embedding", e)
+                return [self._hash_embed(t) for t in texts]
         if not self._embedding_available:
             # 未配置独立向量服务：直接哈希占位，避免对聊天服务商发无效请求。
             return [self._hash_embed(t) for t in texts]
@@ -293,7 +334,12 @@ def embed_with_cache(texts: list[str], cache_dir: str | None = None) -> list[lis
         except (json.JSONDecodeError, OSError):
             cache = {}
 
-    keys = [hashlib.sha256(t.encode("utf-8")).hexdigest() for t in texts]
+    # 缓存键带模型名：切换向量模型（如 OpenAI -> 本地 bge）后旧缓存自动失效
+    model_tag = get_llm().embedding_model
+    keys = [
+        hashlib.sha256(f"{model_tag}:{t}".encode("utf-8")).hexdigest()
+        for t in texts
+    ]
     missing: list[int] = []
     result: list[list[float]] = [cache.get(k) for k in keys]  # type: ignore[list-item]
     for i, v in enumerate(result):
