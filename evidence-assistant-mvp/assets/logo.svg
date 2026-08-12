@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Evidence Assistant">
+  <defs>
+    <linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0d9488"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <path fill="#fff" d="M64 24c-18 0-32 12-32 28 0 22 32 52 32 52s32-30 32-52c0-16-14-28-32-28zm0 38a10 10 0 1 1 0-20 10 10 0 0 1 0 20z"/>
+  <path fill="#ecfdf5" d="M36 96h56v8H36z" opacity=".9"/>
+</svg>

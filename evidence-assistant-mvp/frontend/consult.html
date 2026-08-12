@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI 证据咨询 - Evidence Assistant</title>
+  <link rel="stylesheet" href="/frontend/styles.css" />
+  <style>
+    .consult-page-main { padding-bottom: 3rem; }
+    .consult-wrap { max-width: min(1280px, 100%); margin: 0 auto; padding: 0 1rem 2rem; }
+    .consult-hint {
+      font-size: 0.9rem; color: #334155; margin: 0 0 1rem; line-height: 1.65;
+      max-width: 56rem; padding: 14px 18px; background: rgba(255,255,255,0.94);
+      border-radius: 12px; border: 1px solid #e2e8f0;
+    }
+    .consult-hint code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+    .consult-chat {
+      border: 1px solid rgba(255,255,255,0.18); border-radius: 18px;
+      background: rgba(255,255,255,0.97);
+      box-shadow: 0 4px 24px rgba(15,23,42,0.08), 0 24px 48px rgba(15,23,42,0.12);
+      min-height: min(52vh, 560px); max-height: min(78vh, 760px);
+      overflow-y: auto; padding: 1.5rem; margin-bottom: 1rem; scroll-behavior: smooth;
+    }
+    .consult-msg { margin-bottom: 1.35rem; }
+    .consult-msg-row { display: flex; gap: 0.85rem; align-items: flex-end; }
+    .consult-msg--user .consult-msg-row { flex-direction: row-reverse; }
+    .consult-avatar {
+      width: 48px; height: 48px; border-radius: 14px; object-fit: cover; flex-shrink: 0;
+      box-shadow: 0 4px 14px rgba(13,148,136,0.25); border: 2px solid rgba(255,255,255,0.95);
+      background: linear-gradient(145deg, #ecfdf5, #ccfbf1);
+    }
+    .consult-msg--user .consult-avatar { display: none; }
+    .consult-msg-body { display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; max-width: calc(100% - 56px); }
+    .consult-msg--user .consult-msg-body { align-items: flex-end; max-width: min(92%, 820px); }
+    .consult-meta { font-size: 0.8rem; font-weight: 700; color: #64748b; padding: 0 0.25rem; }
+    .consult-msg--assistant .consult-meta { color: #0f766e; }
+    .consult-bubble {
+      padding: 1rem 1.15rem; border-radius: 14px 14px 14px 6px; line-height: 1.75;
+      white-space: pre-wrap; word-break: break-word; font-size: 1.02rem; color: #1e293b;
+    }
+    .consult-msg--assistant .consult-bubble {
+      background: linear-gradient(180deg, #f8fafc 0%, #f0fdfa 100%);
+      border: 1px solid #e2e8f0; box-shadow: 0 2px 12px rgba(15,23,42,0.06);
+    }
+    .consult-msg--user .consult-bubble {
+      background: linear-gradient(135deg, #0d9488 0%, #2563eb 100%);
+      color: #fff; border-radius: 14px 14px 6px 14px; box-shadow: 0 4px 16px rgba(13,148,136,0.35);
+    }
+    .consult-loading { opacity: 0.85; font-style: italic; color: #64748b; }
+    .consult-compose {
+      border-radius: 18px; background: rgba(255,255,255,0.98);
+      border: 1px solid rgba(255,255,255,0.2);
+      box-shadow: 0 4px 24px rgba(15,23,42,0.08); padding: 1rem 1.1rem;
+    }
+    .consult-compose-inner { display: flex; gap: 0.85rem; align-items: flex-end; }
+    .consult-compose textarea {
+      flex: 1; min-height: 110px; max-height: 220px; padding: 1rem 1.1rem;
+      border-radius: 14px; border: 1px solid #cbd5e1; font: inherit; font-size: 1.02rem;
+      resize: vertical; background: #f8fafc;
+    }
+    .consult-compose textarea:focus {
+      outline: none; border-color: #0d9488; box-shadow: 0 0 0 3px rgba(13,148,136,0.2); background: #fff;
+    }
+    .consult-compose .btn-primary { min-width: 100px; height: 48px; align-self: flex-end; }
+    @media (max-width: 640px) {
+      .consult-compose-inner { flex-direction: column; align-items: stretch; }
+      .consult-compose .btn-primary { width: 100%; }
+    }
+  </style>
+</head>
+<body class="report-page">
+  <div class="header-area" id="sticky-header">
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col-lg-3">
+          <div class="header-logo">
+            <a href="/"><span class="header-logo-text">Evidence Assistant 证据助手</span></a>
+          </div>
+        </div>
+        <div class="col-lg-9">
+          <button type="button" class="menu-toggle" id="menuToggle" aria-label="打开菜单">☰</button>
+          <div class="header-menu-wrap" id="headerMenuWrap">
+            <div class="header-menu">
+              <ul>
+                <li><a href="/">网站首页</a></li>
+                <li><a href="/consult?track=clinical" data-transition="true">临床咨询</a></li>
+                <li><a href="/consult?track=nutrition" data-transition="true">营养咨询</a></li>
+                <li><a href="/eval" data-transition="true">RAG 评测</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="hero-area style-one d-flex align-items-center page-hero">
+    <div class="hero-area-overlay" aria-hidden="true"></div>
+    <div class="container">
+      <div class="hero-content">
+        <div class="section-title left style-one">
+          <p class="section-subtitle">ReAct 多步推理 · 带引用回答</p>
+          <h1 id="pageTitle">临床证据咨询</h1>
+          <p class="hero-desc" id="pageDesc">描述临床问题，智能体会检索知识库并给出带 [n] 引用的结构化回答；右侧可查看推理步骤与证据片段。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="container main-after-hero consult-page-main">
+    <div class="consult-wrap">
+      <p class="ethics-banner">⚠️ 本系统仅供学习演示，不构成医疗建议。请勿输入真实患者隐私信息；引用需人工复核。</p>
+      <div class="track-bar" role="tablist" aria-label="咨询赛道">
+        <button type="button" class="track-btn is-active" data-track="clinical" id="trackClinical">临床证据</button>
+        <button type="button" class="track-btn" data-track="nutrition" id="trackNutrition">营养健康</button>
+      </div>
+      <p class="consult-hint">配置 <code>LLM_API_KEY</code> 后启用 ReAct 多步推理（Thought → Action → Observation）。未配置时为离线占位模式，仍可演示检索与模板回答。首次使用前请运行 <code>python scripts/build_kb.py --skip-live</code> 构建知识库。</p>
+      <div class="consult-options" aria-label="检索与生成选项">
+        <div class="consult-options-grid">
+          <label class="opt-check">
+            <input type="checkbox" id="useLiveTools" />
+            <span>启用在线补检索</span>
+          </label>
+          <label class="opt-slider">
+            <span>证据条数 <strong id="topKValue">5</strong></span>
+            <input type="range" id="topKSlider" min="3" max="8" value="5" step="1" />
+          </label>
+          <label class="opt-select">
+            <span>示例问题</span>
+            <select id="sampleSelect"></select>
+          </label>
+          <button type="button" class="btn btn-secondary btn-sm" id="fillSampleBtn">填入示例</button>
+          <label class="opt-check" title="关闭后使用与 Streamlit 相同的单次 ask 管道">
+            <input type="checkbox" id="useReact" checked />
+            <span>ReAct 多步推理</span>
+          </label>
+        </div>
+      </div>
+      <div class="consult-layout">
+        <div class="consult-main-col">
+          <div id="chatLog" class="consult-chat" aria-live="polite" role="log" aria-label="对话记录"></div>
+          <div class="consult-compose">
+            <div class="consult-compose-inner">
+              <textarea id="chatInput" placeholder="输入您的医学/健康问题…" rows="4"></textarea>
+              <button type="button" class="btn btn-primary" id="sendBtn">发送</button>
+            </div>
+          </div>
+        </div>
+        <aside class="consult-side-col">
+          <div class="react-panel" id="reactPanel">
+            <h3>ReAct 推理步骤</h3>
+            <p id="reactEmpty" style="color:#94a3b8;font-size:0.88rem;margin:0;">发送问题后将显示 Thought / Action / Observation。</p>
+            <div id="reactSteps"></div>
+          </div>
+          <div class="evidence-panel" style="margin-top:1rem;">
+            <h3>证据面板</h3>
+            <p id="evidenceEmpty" style="color:#94a3b8;font-size:0.88rem;margin:0;">检索到的文献片段将列于此处。</p>
+            <div id="evidenceList"></div>
+          </div>
+          <div class="answer-meta-panel" id="answerMetaPanel" hidden>
+            <h3>回答元信息</h3>
+            <p id="rewrittenQueryLine" class="answer-meta-line"></p>
+            <p id="citationCheckLine" class="answer-meta-line"></p>
+            <p id="promptVersionLine" class="answer-meta-line"></p>
+          </div>
+          <details class="retrieval-expander" id="retrievalExpander" hidden>
+            <summary>为什么是这些证据？</summary>
+            <div class="retrieval-expander-body" id="retrievalExpanderBody"></div>
+          </details>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <script src="/frontend/main.js"></script>
+  <script src="/frontend/consult.js"></script>
+</body>
+</html>

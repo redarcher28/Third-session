@@ -6,11 +6,11 @@ OpenEvidence 风格的三赛道证据助手：临床证据助手、健康营养�
 
 ## 先看结论
 
-- 主前端是原生 Open WebUI，入口为 `http://127.0.0.1:8080/`；FastAPI 只负责统一 RAG 后端和协议适配。
-- Open WebUI 中的 `evidence-clinical` 对应赛道一，`evidence-nutrition` 对应赛道二；两个模型共用同一套检索、引用校验和安全边界，只由预置 Prompt 与赛道配置区分表达方式。
-- API Key 可以直接在 Open WebUI 的“设置 → 通用 → 证据模型连接”中填写，不需要手动编辑 `.env`。配置会保存到当前用户目录的私有运行时文件，不进入 Git。
-- `data/chroma/` 是本机生成的索引，不随分支提交；换电脑或清理索引后，用 A 组保留的 raw/processed 数据重新执行知识库构建即可。
-- Open WebUI 的 `stream=true` 会走真实上游增量流：模型分片 → 后端回调 → `chat.completion.chunk` → Open WebUI；回答完成后来源进入原生 Sources 面板。
+- **Open WebUI 主前端**：`http://127.0.0.1:8080/`（证据台）；Windows 一键：`.\scripts\start_openwebui.ps1`
+- **自定义网站**（3D 首页 + ReAct 咨询 + 评测仪表盘）：`python run_web.py` → `http://127.0.0.1:8000/`
+- 两套前端共用同一后端：`src.app.web_server`（`api.py` 与其指向同一 app）
+- Open WebUI 通过 `GET /v1/models`、`POST /v1/chat/completions` 接入；自定义页用 `POST /api/chat`、`POST /ask`
+- Open WebUI 中的 `evidence-clinical` / `evidence-nutrition` 对应赛道一/二，Prompt 与 RAG 由后端统一控制
 
 ## 团队协作文档
 

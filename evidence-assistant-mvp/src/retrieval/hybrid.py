@@ -12,6 +12,7 @@ from typing import Any
 from rank_bm25 import BM25Okapi
 
 from src.kb.store import EvidenceStore
+from src.kb.weights import combined_priority
 from src.llm import get_llm
 from src.tracks.prompt_profiles import build_rerank_messages
 
@@ -105,7 +106,12 @@ class HybridRetriever:
         llm = get_llm()
         # getattr 保留对旧版/测试替身 LLM（只有 is_offline 属性）的兼容。
         can_use_vectors = getattr(llm, "has_remote_embeddings", not llm.is_offline)
-        vector_hits = [] if not can_use_vectors else self.store.query(query, n_results=candidate_k)
+        vector_hits: list[dict[str, Any]] = []
+        if can_use_vectors:
+            try:
+                vector_hits = self.store.query(query, n_results=candidate_k)
+            except Exception as exc:
+                logger.warning("Vector retrieve failed (%s); BM25-only fallback", type(exc).__name__)
         bm25_hits = self._bm25_search(query, top_n=candidate_k)
 
         merged: dict[str, dict[str, Any]] = {}
@@ -208,19 +214,20 @@ class HybridRetriever:
 
 
 def score_evidence_priority(item: dict[str, Any]) -> float:
-    """
-    【待完善】按证据等级给单条结果打优先级分。
-
-    参数:
-        item: 检索结果 dict，至少含 evidence_level。
-
-    返回:
-        float: 权重分，越大越优先（建议指南>荟萃>RCT>观察>其他）。
-
-    作用:
-        供临床赛道加权排序，突出高质量证据。
-    """
-    raise NotImplementedError("待队员实现：score_evidence_priority")
+    """按证据等级与年份给单条结果打优先级分（对接 A 组 weights）。"""
+    level = str(item.get("evidence_level") or "other")
+    year_raw = item.get("year")
+    year: int | None
+    if year_raw in (None, -1, "unknown", ""):
+        year = None
+    elif isinstance(year_raw, int):
+        year = year_raw if year_raw > 0 else None
+    else:
+        try:
+            year = int(str(year_raw))
+        except (TypeError, ValueError):
+            year = None
+    return combined_priority(level, year)
 
 
 def filter_by_year_range(
@@ -228,63 +235,64 @@ def filter_by_year_range(
     year_from: int | None = None,
     year_to: int | None = None,
 ) -> list[dict[str, Any]]:
-    """
-    【待完善】按发表年份过滤检索结果。
-
-    参数:
-        items: 检索结果列表。
-        year_from: 起始年（含），None 表示不限。
-        year_to: 结束年（含），None 表示不限。
-
-    返回:
-        list[dict]: 过滤后的列表。
-
-    作用:
-        演示「近五年证据」等产品能力。
-    """
-    raise NotImplementedError("待队员实现：filter_by_year_range")
+    """按发表年份过滤检索结果；未知年份在指定范围时保留。"""
+    if year_from is None and year_to is None:
+        return list(items)
+    out: list[dict[str, Any]] = []
+    for item in items:
+        raw = item.get("year")
+        if raw in (None, -1, "unknown", ""):
+            out.append(item)
+            continue
+        try:
+            year = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if year_from is not None and year < year_from:
+            continue
+        if year_to is not None and year > year_to:
+            continue
+        out.append(item)
+    return out
 
 
 def explain_retrieval(query: str, items: list[dict[str, Any]]) -> dict[str, Any]:
-    """
-    【待完善】生成检索过程的可解释说明（演示用）。
-
-    参数:
-        query: 用户或改写后的查询。
-        items: 最终采用的证据列表。
-
-    返回:
-        dict: 例如 {
-            "query": str,
-            "why_selected": list[str],
-            "sources": list[str],
-            "notes": str,
-        }
-
-    作用:
-        让评委看懂「为什么选了这些文献」，而不是黑盒。
-    """
-    raise NotImplementedError("待队员实现：explain_retrieval")
+    """生成检索过程的可解释说明（演示用）。"""
+    why: list[str] = []
+    sources: list[str] = []
+    for i, item in enumerate(items[:5], start=1):
+        title = str(item.get("title") or item.get("doc_id") or f"证据{i}")
+        level = str(item.get("evidence_level") or "other")
+        source = str(item.get("source") or "?")
+        why.append(f"[{i}] {title} · {level} · {source}")
+        if source not in sources:
+            sources.append(source)
+    return {
+        "query": query,
+        "why_selected": why,
+        "sources": sources,
+        "notes": f"共选用 {len(items)} 条证据片段。",
+    }
 
 
 def diversify_by_source(
     items: list[dict[str, Any]],
     max_per_source: int = 2,
 ) -> list[dict[str, Any]]:
-    """
-    【待完善】按来源多样性重排，避免同一来源占满 Top-K。
-
-    参数:
-        items: 已排序的候选证据。
-        max_per_source: 同一 source 最多保留条数。
-
-    返回:
-        list[dict]: 多样化后的列表。
-
-    作用:
-        增强检索型 RAG 的证据覆盖面（文献+试验+wiki 等）。
-    """
-    raise NotImplementedError("待队员实现：diversify_by_source")
+    """按来源多样性重排，避免同一 source 占满 Top-K。"""
+    if max_per_source <= 0:
+        return list(items)
+    counts: dict[str, int] = {}
+    diversified: list[dict[str, Any]] = []
+    deferred: list[dict[str, Any]] = []
+    for item in items:
+        source = str(item.get("source") or "unknown")
+        if counts.get(source, 0) < max_per_source:
+            diversified.append(item)
+            counts[source] = counts.get(source, 0) + 1
+        else:
+            deferred.append(item)
+    return diversified + deferred
 
 
 def reciprocal_rank_fusion(
@@ -292,18 +300,21 @@ def reciprocal_rank_fusion(
     bm25_hits: list[dict[str, Any]],
     k: int = 60,
 ) -> list[dict[str, Any]]:
-    """
-    【待完善】对向量召回与 BM25 召回做 RRF 融合排序。
-
-    参数:
-        vector_hits: 向量检索结果（有序）。
-        bm25_hits: BM25 检索结果（有序）。
-        k: RRF 常数，常用 60。
-
-    返回:
-        list[dict]: 融合后的有序列表（含融合分）。
-
-    作用:
-        替代简单分值相加，提升混合检索稳定性。
-    """
-    raise NotImplementedError("待队员实现：reciprocal_rank_fusion")
+    """对向量召回与 BM25 召回做 RRF 融合排序。"""
+    scores: dict[str, float] = {}
+    merged: dict[str, dict[str, Any]] = {}
+    for rank, hit in enumerate(vector_hits):
+        cid = str(hit.get("chunk_id") or hit.get("doc_id") or rank)
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+        merged.setdefault(cid, hit)
+    for rank, hit in enumerate(bm25_hits):
+        cid = str(hit.get("chunk_id") or hit.get("doc_id") or f"bm25-{rank}")
+        scores[cid] = scores.get(cid, 0.0) + 1.0 / (k + rank + 1)
+        merged.setdefault(cid, hit)
+    ordered = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    out: list[dict[str, Any]] = []
+    for cid, rrf_score in ordered:
+        row = dict(merged[cid])
+        row["rrf_score"] = rrf_score
+        out.append(row)
+    return out

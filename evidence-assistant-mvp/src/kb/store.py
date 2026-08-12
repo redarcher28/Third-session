@@ -5,6 +5,7 @@ Chroma 向量仓储：负责 chunk 入库、语义检索、导出 BM25 语料。
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import Counter
 from pathlib import Path
@@ -22,6 +23,34 @@ from src.models import Chunk
 logger = logging.getLogger(__name__)
 
 COLLECTION = "evidence_chunks"
+BM25_CACHE_NAME = "bm25_corpus.json"
+
+
+def _bm25_cache_path() -> Path:
+    return get_settings().processed_path / BM25_CACHE_NAME
+
+
+def _load_bm25_cache(limit: int = 5000) -> list[dict[str, Any]]:
+    path = _bm25_cache_path()
+    if not path.exists():
+        return []
+    try:
+        rows = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("BM25 cache read failed: %s", exc)
+        return []
+    if not isinstance(rows, list):
+        return []
+    return rows[:limit]
+
+
+def export_bm25_cache(docs: list[dict[str, Any]]) -> Path:
+    """将 BM25 语料写入 sidecar，Chroma 不可用时仍可检索。"""
+    path = _bm25_cache_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(docs, ensure_ascii=False), encoding="utf-8")
+    logger.info("BM25 cache exported: %d rows -> %s", len(docs), path)
+    return path
 
 
 class EvidenceStore:
@@ -52,8 +81,15 @@ class EvidenceStore:
         )
 
     def count(self) -> int:
-        """返回当前集合中的向量条数。"""
-        return self._col.count()
+        """返回当前集合中的向量条数；Chroma 异常时回退 BM25 缓存条数。"""
+        try:
+            return self._col.count()
+        except Exception as exc:
+            cached = _load_bm25_cache(limit=100000)
+            if cached:
+                logger.warning("Chroma count failed (%s); using BM25 cache (%d)", type(exc).__name__, len(cached))
+                return len(cached)
+            raise
 
     def upsert_chunks(self, chunks: list[Chunk], batch_size: int = 32) -> int:
         """
@@ -171,22 +207,33 @@ class EvidenceStore:
         返回:
             list[dict]: 含 chunk_id/text 及元数据。
         """
-        count = self._col.count()
-        if count == 0:
-            return []
-        n = min(count, limit)
-        res = self._col.get(limit=n, include=["documents", "metadatas"])
-        out = []
-        for i, cid in enumerate(res["ids"]):
-            meta = res["metadatas"][i] if res["metadatas"] else {}
-            out.append(
-                {
-                    "chunk_id": cid,
-                    "text": res["documents"][i] if res["documents"] else "",
-                    **(meta or {}),
-                }
-            )
-        return out
+        try:
+            count = self._col.count()
+            if count == 0:
+                return _load_bm25_cache(limit=limit)
+            n = min(count, limit)
+            res = self._col.get(limit=n, include=["documents", "metadatas"])
+            out = []
+            for i, cid in enumerate(res["ids"]):
+                meta = res["metadatas"][i] if res["metadatas"] else {}
+                out.append(
+                    {
+                        "chunk_id": cid,
+                        "text": res["documents"][i] if res["documents"] else "",
+                        **(meta or {}),
+                    }
+                )
+            return out
+        except Exception as exc:
+            cached = _load_bm25_cache(limit=limit)
+            if cached:
+                logger.warning(
+                    "Chroma export failed (%s); using BM25 cache (%d rows)",
+                    type(exc).__name__,
+                    len(cached),
+                )
+                return cached
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +297,10 @@ def rebuild_collection_from_processed(reset: bool = True) -> int:
             logger.info("Incremental rebuild: nothing changed, store untouched (count=%d)", store.count())
             return 0
     n = store.upsert_chunks(chunks)
+    try:
+        export_bm25_cache(store.all_chunks_for_bm25(limit=100000))
+    except Exception as exc:
+        logger.warning("BM25 cache export skipped: %s", exc)
     logger.info("Rebuilt knowledge base: %d chunks upserted (store count=%d)", n, store.count())
     return n
 

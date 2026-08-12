@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" fill="none">
+  <defs>
+    <linearGradient id="eg1" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#6366f1"/><stop offset="1" stop-color="#a78bfa"/></linearGradient>
+    <linearGradient id="eg2" x1="0" y1="1" x2="0" y2="0"><stop stop-color="#0d9488"/><stop offset="1" stop-color="#2dd4bf"/></linearGradient>
+  </defs>
+  <ellipse cx="260" cy="376" rx="168" ry="24" fill="#312e81" fill-opacity=".4"/>
+  <!-- ;ÄKb -->
+  <g transform="translate(100 50) rotate(-4 160 160)">
+    <rect width="300" height="240" rx="18" fill="#0f172a" fill-opacity=".92" stroke="#818cf8" stroke-width="1.2"/>
+    <text x="20" y="32" fill="#c4b5fd" font-size="12" font-weight="700">Benchmark · RAG vs Baseline LLM</text>
+    <!-- ñ¶þ -->
+    <text x="30" y="58" fill="#64748b" font-size="9">G(‡ “</text>
+    <rect x="40" y="170" width="36" height="60" rx="6" fill="url(#eg1)" opacity=".85"/>
+    <rect x="90" y="130" width="36" height="100" rx="6" fill="url(#eg2)"/>
+    <rect x="140" y="150" width="36" height="80" rx="6" fill="url(#eg1)" opacity=".85"/>
+    <rect x="190" y="110" width="36" height="120" rx="6" fill="url(#eg2)"/>
+    <text x="46" y="244" fill="#94a3b8" font-size="8">Base</text>
+    <text x="96" y="244" fill="#94a3b8" font-size="8">RAG</text>
+    <text x="146" y="244" fill="#94a3b8" font-size="8">Base</text>
+    <text x="196" y="244" fill="#94a3b8" font-size="8">RAG</text>
+    <!-- ÷¾ -->
+    <g transform="translate(230 70)">
+      <polygon points="0,-40 35,12 -35,12" stroke="#475569" stroke-width="1" fill="none"/>
+      <polygon points="0,-28 24,8 -24,8" stroke="#2dd4bf" stroke-width="1.5" fill="rgba(45,212,191,.15)"/>
+      <text x="-20" y="36" fill="#64748b" font-size="8">†Ö</text>
+    </g>
+  </g>
+  <!-- 4ŠÏha -->
+  <g transform="translate(30 200)">
+    <rect width="120" height="90" rx="10" fill="#1e1b4b" fill-opacity=".9" stroke="#6366f1"/>
+    <text x="12" y="24" fill="#a5b4fc" font-size="10">ÒTÆn‡</text>
+    <text x="12" y="48" fill="#f8fafc" font-size="22" font-weight="700">92%</text>
+    <rect x="12" y="62" width="96" height="6" rx="3" fill="#334155"/><rect x="12" y="62" width="88" height="6" rx="3" fill="#818cf8"/>
+  </g>
+  <g transform="translate(380 70)">
+    <rect width="110" height="80" rx="10" fill="#0f172a" stroke="#14b8a6"/>
+    <text x="12" y="24" fill="#5eead4" font-size="10">Citation Valid</text>
+    <text x="12" y="48" fill="#34d399" font-size="18" font-weight="700">4/4 </text>
+    <text x="12" y="66" fill="#64748b" font-size="9">n=12 benchmark</text>
+  </g>
+  <!-- AW;— -->
+  <g transform="translate(400 280)" opacity=".6">
+    <rect x="18" y="0" width="8" height="44" rx="2" fill="#818cf8"/>
+    <rect x="0" y="18" width="44" height="8" rx="2" fill="#818cf8"/>
+  </g>
+</svg>

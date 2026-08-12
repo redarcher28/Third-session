@@ -1,12 +1,12 @@
 {
-  "count": 11401,
+  "count": 11409,
   "docs_covered": 3008,
   "by_source": {
     "pubmed": 6738,
     "local": 2840,
     "clinicaltrials": 474,
     "europepmc": 1341,
-    "wiki": 8
+    "wiki": 16
   },
   "by_level": {
     "guideline": 725,
@@ -15,10 +15,10 @@
     "observational": 1089,
     "other": 4201,
     "ebook": 2834,
-    "wiki": 8
+    "wiki": 16
   },
   "by_year": {
-    "-1": 2855,
+    "-1": 2863,
     "1988": 1,
     "1993": 2,
     "1998": 1,

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RAG 评测 - Evidence Assistant</title>
+  <link rel="stylesheet" href="/frontend/styles.css" />
+</head>
+<body class="report-page">
+  <div class="header-area" id="sticky-header">
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col-lg-3">
+          <div class="header-logo">
+            <a href="/"><span class="header-logo-text">Evidence Assistant 证据助手</span></a>
+          </div>
+        </div>
+        <div class="col-lg-9">
+          <button type="button" class="menu-toggle" id="menuToggle" aria-label="打开菜单">☰</button>
+          <div class="header-menu-wrap" id="headerMenuWrap">
+            <div class="header-menu">
+              <ul>
+                <li><a href="/">网站首页</a></li>
+                <li><a href="/consult?track=clinical" data-transition="true">临床咨询</a></li>
+                <li><a href="/consult?track=nutrition" data-transition="true">营养咨询</a></li>
+                <li><a href="/eval">RAG 评测</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="hero-area style-one d-flex align-items-center page-hero">
+    <div class="hero-area-overlay" aria-hidden="true"></div>
+    <div class="container">
+      <div class="hero-content">
+        <div class="section-title left style-one">
+          <p class="section-subtitle">赛道三 · Baseline vs RAG</p>
+          <h1>RAG 对比评测</h1>
+          <p class="hero-desc">对比纯通用大模型（Baseline）与带知识库的 RAG 在同一批医学/健康问题上的表现。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <main class="container main-after-hero">
+    <div class="eval-panel">
+      <p class="ethics-banner">评测结果仅供课程演示；完整报告亦可通过 <code>python scripts/run_eval.py</code> 导出。</p>
+      <button type="button" class="btn btn-primary" id="runEvalBtn">运行评测（可能较慢）</button>
+      <p id="evalStatus" class="eval-status"></p>
+      <p id="evalEmpty" class="eval-empty">正在加载已有评测结果…</p>
+
+      <div id="evalDashboard" hidden>
+        <h2 class="eval-section-title">汇总指标</h2>
+        <div class="eval-metrics-grid" id="evalMetrics"></div>
+
+        <h2 class="eval-section-title">指标对比</h2>
+        <div class="eval-chart" id="evalChart" aria-label="RAG 与 Baseline 指标对比柱状图"></div>
+
+        <h2 class="eval-section-title">逐题结果</h2>
+        <div class="eval-table-wrap">
+          <table class="eval-table" id="evalTable">
+            <thead>
+              <tr>
+                <th>id</th>
+                <th>track</th>
+                <th>rag_fake</th>
+                <th>baseline_signal</th>
+                <th>rag_cov</th>
+                <th>baseline_cov</th>
+                <th>refused</th>
+                <th>n_contexts</th>
+              </tr>
+            </thead>
+            <tbody id="evalTableBody"></tbody>
+          </table>
+        </div>
+
+        <h2 class="eval-section-title">典型 Case</h2>
+        <div id="evalCases"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/frontend/main.js"></script>
+  <script src="/frontend/eval.js"></script>
+</body>
+</html>

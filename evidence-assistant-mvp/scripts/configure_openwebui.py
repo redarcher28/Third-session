@@ -123,6 +123,75 @@ def _has_config_table(connection: sqlite3.Connection) -> bool:
     return row is not None
 
 
+def _config_schema(connection: sqlite3.Connection) -> str:
+    """返回 ``legacy``（key/value 行）或 ``blob``（Open WebUI 0.6+ 单 JSON）。"""
+    cols = {col[1] for col in connection.execute("PRAGMA table_info(config)").fetchall()}
+    if "data" in cols:
+        return "blob"
+    if "key" in cols and "value" in cols:
+        return "legacy"
+    return "unknown"
+
+
+def _get_nested(data: dict[str, Any], path: str) -> Any:
+    cur: Any = data
+    for part in path.split("."):
+        if not isinstance(cur, dict) or part not in cur:
+            return None
+        cur = cur[part]
+    return cur
+
+
+def _set_nested(data: dict[str, Any], path: str, value: Any) -> None:
+    parts = path.split(".")
+    cur = data
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def _load_blob_config(connection: sqlite3.Connection) -> tuple[dict[str, Any], int | None]:
+    row = connection.execute(
+        "SELECT id, data FROM config ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if not row:
+        return {"version": 0, "ui": {}, "evaluation": {"arena": {}}}, None
+    config_id, payload = row[0], row[1]
+    if isinstance(payload, str):
+        data = _decode(payload, {"version": 0, "ui": {}})
+    elif isinstance(payload, dict):
+        data = payload
+    else:
+        data = {"version": 0, "ui": {}}
+    if not isinstance(data, dict):
+        data = {"version": 0, "ui": {}}
+    data.setdefault("ui", {})
+    data.setdefault("evaluation", {}).setdefault("arena", {})
+    return data, int(config_id)
+
+
+def _save_blob_config(
+    connection: sqlite3.Connection,
+    data: dict[str, Any],
+    config_id: int | None,
+) -> None:
+    encoded = _encode(data)
+    if config_id is None:
+        connection.execute(
+            "INSERT INTO config (data, version, created_at, updated_at) VALUES (?, 0, ?, ?)",
+            (encoded, int(time.time()), int(time.time())),
+        )
+    else:
+        connection.execute(
+            "UPDATE config SET data = ?, updated_at = ? WHERE id = ?",
+            (encoded, int(time.time()), config_id),
+        )
+
+
 def apply_evidence_ui_config(
     db_path: Path,
     *,
@@ -140,39 +209,58 @@ def apply_evidence_ui_config(
         if not _has_config_table(connection):
             return {"updated": False, "reason": "config_table_missing"}
 
-        rows = connection.execute("SELECT key, value FROM config").fetchall()
-        values = {key: _decode(value, None) for key, value in rows}
-        banners = merge_banners(
-            values.get("ui.banners"),
-            timestamp=timestamp,
-            settings_url=settings_url,
-        )
-        suggestions = merge_suggestions(values.get("ui.prompt_suggestions"))
-
-        updates: dict[str, Any] = {
-            "ui.banners": banners,
-            "ui.prompt_suggestions": suggestions,
-            # 评测 Arena 不是本项目的模型，避免出现在双赛道模型选择器中。
-            "evaluation.arena.enable": False,
-        }
-        if not values.get("ui.watermark"):
-            updates["ui.watermark"] = EVIDENCE_WATERMARK
+        schema = _config_schema(connection)
+        if schema == "unknown":
+            return {"updated": False, "reason": "config_schema_unknown"}
 
         now = int(timestamp if timestamp is not None else time.time())
-        for key, value in updates.items():
-            connection.execute(
-                """
-                INSERT INTO config (key, value, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    value = excluded.value,
-                    updated_at = excluded.updated_at
-                """,
-                (key, _encode(value), now),
+
+        if schema == "legacy":
+            rows = connection.execute("SELECT key, value FROM config").fetchall()
+            values = {key: _decode(value, None) for key, value in rows}
+            banners = merge_banners(
+                values.get("ui.banners"),
+                timestamp=timestamp,
+                settings_url=settings_url,
             )
+            suggestions = merge_suggestions(values.get("ui.prompt_suggestions"))
+            updates: dict[str, Any] = {
+                "ui.banners": banners,
+                "ui.prompt_suggestions": suggestions,
+                "evaluation.arena.enable": False,
+            }
+            if not values.get("ui.watermark"):
+                updates["ui.watermark"] = EVIDENCE_WATERMARK
+            for key, value in updates.items():
+                connection.execute(
+                    """
+                    INSERT INTO config (key, value, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = excluded.updated_at
+                    """,
+                    (key, _encode(value), now),
+                )
+        else:
+            data, config_id = _load_blob_config(connection)
+            banners = merge_banners(
+                _get_nested(data, "ui.banners"),
+                timestamp=timestamp,
+                settings_url=settings_url,
+            )
+            suggestions = merge_suggestions(_get_nested(data, "ui.prompt_suggestions"))
+            _set_nested(data, "ui.banners", banners)
+            _set_nested(data, "ui.prompt_suggestions", suggestions)
+            _set_nested(data, "evaluation.arena.enable", False)
+            if not _get_nested(data, "ui.watermark"):
+                _set_nested(data, "ui.watermark", EVIDENCE_WATERMARK)
+            _save_blob_config(connection, data, config_id)
+
         connection.commit()
         return {
             "updated": True,
+            "schema": schema,
             "banner_count": len(banners),
             "suggestion_count": len(suggestions),
             "arena_disabled": True,

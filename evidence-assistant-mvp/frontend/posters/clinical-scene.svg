@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" fill="none">
+  <defs>
+    <linearGradient id="cg1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#2dd4bf"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+    <linearGradient id="cg2" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#0f766e" stop-opacity=".4"/><stop offset="1" stop-color="#1d4ed8" stop-opacity=".15"/></linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <!-- •§I¯ -->
+  <ellipse cx="260" cy="370" rx="180" ry="28" fill="url(#cg2)" opacity=".8"/>
+  <ellipse cx="260" cy="368" rx="160" ry="22" stroke="#5eead4" stroke-width="1.5" opacity=".6"/>
+  <!-- ;Ñ¤O -->
+  <g transform="translate(130 60) rotate(-8 130 130)">
+    <rect x="0" y="0" width="260" height="200" rx="16" fill="#0f172a" fill-opacity=".85" stroke="#5eead4" stroke-width="1.2"/>
+    <rect x="12" y="12" width="236" height="28" rx="6" fill="#134e4a" fill-opacity=".5"/>
+    <circle cx="26" cy="26" r="5" fill="#34d399"/>
+    <text x="40" y="30" fill="#99f6e4" font-size="11" font-family="Segoe UI,sans-serif">ICU Evidence Monitor · LIVE</text>
+    <!-- EKG -->
+    <polyline points="20,120 50,120 65,120 72,85 80,145 88,120 130,120 145,100 160,130 175,120 240,120" stroke="#34d399" stroke-width="2.5" stroke-linecap="round" filter="url(#glow)"/>
+    <!-- W -->
+    <rect x="16" y="150" width="70" height="38" rx="8" fill="#1e293b" stroke="#334155"/>
+    <text x="24" y="168" fill="#94a3b8" font-size="9">BP mmHg</text>
+    <text x="24" y="182" fill="#f8fafc" font-size="14" font-weight="700">128/82</text>
+    <rect x="96" y="150" width="70" height="38" rx="8" fill="#1e293b" stroke="#334155"/>
+    <text x="104" y="168" fill="#94a3b8" font-size="9">SpO‚</text>
+    <text x="104" y="182" fill="#34d399" font-size="14" font-weight="700">98%</text>
+    <rect x="176" y="150" width="70" height="38" rx="8" fill="#1e293b" stroke="#334155"/>
+    <text x="184" y="168" fill="#94a3b8" font-size="9">HR bpm</text>
+    <text x="184" y="182" fill="#f8fafc" font-size="14" font-weight="700">72</text>
+  </g>
+  <!-- Ã¿F -->
+  <g transform="translate(340 90)" opacity=".85">
+    <path d="M40 10 C40 10 10 10 10 35 C10 55 40 75 40 75 C40 75 70 55 70 35 C70 10 40 10 40 10Z" stroke="url(#cg1)" stroke-width="2" fill="rgba(45,212,191,.12)"/>
+    <path d="M40 28 L40 52 M28 40 L52 40" stroke="#5eead4" stroke-width="1.5" opacity=".7"/>
+  </g>
+  <!-- ,Êh -->
+  <g transform="translate(30 180) rotate(-15)">
+    <path d="M20 0 Q40 40 60 80" stroke="#94a3b8" stroke-width="3" fill="none"/>
+    <circle cx="62" cy="84" r="14" stroke="#5eead4" stroke-width="2" fill="#0f172a"/>
+    <circle cx="62" cy="84" r="6" fill="#2dd4bf"/>
+    <circle cx="18" cy="0" r="8" stroke="#64748b" stroke-width="2" fill="#1e293b"/>
+  </g>
+  <!-- n¨Ána -->
+  <g transform="translate(360 240)">
+    <rect width="130" height="72" rx="10" fill="#0f172a" fill-opacity=".9" stroke="#3b82f6" stroke-width="1"/>
+    <text x="12" y="22" fill="#93c5fd" font-size="10" font-weight="700">PMID 38291022</text>
+    <text x="12" y="38" fill="#cbd5e1" font-size="9">Meta-analysis</text>
+    <text x="12" y="54" fill="#34d399" font-size="9">Evidence: Level I</text>
+    <rect x="12" y="60" width="40" height="4" rx="2" fill="#334155"/><rect x="12" y="60" width="32" height="4" rx="2" fill="#2dd4bf"/>
+  </g>
+  <g transform="translate(380 60)">
+    <rect width="100" height="56" rx="10" fill="#0f172a" fill-opacity=".88" stroke="#14b8a6"/>
+    <text x="12" y="22" fill="#5eead4" font-size="10">NCT04239134</text>
+    <text x="12" y="38" fill="#94a3b8" font-size="9">Phase III RCT</text>
+  </g>
+  <!-- DNA Gµ -->
+  <g transform="translate(420 300) rotate(20)" opacity=".5">
+    <path d="M0 0 Q15 20 0 40 Q-15 60 0 80" stroke="#3b82f6" stroke-width="1.5" fill="none"/>
+    <path d="M30 0 Q15 20 30 40 Q45 60 30 80" stroke="#2dd4bf" stroke-width="1.5" fill="none"/>
+    <line x1="5" y1="10" x2="25" y2="10" stroke="#64748b" stroke-width="1"/>
+    <line x1="5" y1="30" x2="25" y2="30" stroke="#64748b" stroke-width="1"/>
+    <line x1="5" y1="50" x2="25" y2="50" stroke="#64748b" stroke-width="1"/>
+  </g>
+</svg>

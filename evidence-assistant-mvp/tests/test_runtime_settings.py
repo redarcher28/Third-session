@@ -66,7 +66,8 @@ class RuntimeSettingsTests(unittest.TestCase):
                 self.assertIsNotNone(loaded)
                 self.assertEqual(loaded.model, "gpt-test")  # type: ignore[union-attr]
                 self.assertEqual(loaded.api_key, "secret-token-for-test")  # type: ignore[union-attr]
-                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                if os.name != "nt":
+                    self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
                 self.assertTrue(clear_runtime_config())
                 self.assertIsNone(load_runtime_config())
 

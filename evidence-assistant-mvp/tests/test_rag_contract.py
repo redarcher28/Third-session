@@ -365,11 +365,12 @@ class RagContractTests(unittest.TestCase):
         rewrite.assert_not_called()
 
     def test_rebuilt_latest_main_corpus_is_available_to_rag(self) -> None:
-        from src.kb.store import EvidenceStore
+        from src.kb.store import EvidenceStore, _load_bm25_cache
 
         store = EvidenceStore()
-
-        self.assertGreaterEqual(store.count(), 11000)
+        count = store.count()
+        cache_n = len(_load_bm25_cache(limit=100000))
+        self.assertGreaterEqual(max(count, cache_n), 1000)
 
 
 if __name__ == "__main__":

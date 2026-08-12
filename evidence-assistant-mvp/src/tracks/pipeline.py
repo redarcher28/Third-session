@@ -249,6 +249,39 @@ def _lexical_query_rewrite(question: str, track: str) -> str:
         return append_nutrition_query_aliases(question, question)
     return f"{question.strip()} guideline RCT systematic review meta-analysis"[:500]
 
+
+def reformulate_query(question: str, track: str) -> tuple[str, str]:
+    """与 ask()/ReAct 共用的查询改写：返回 (改写后查询, 模式标签)。"""
+    settings = get_settings()
+    if track == "nutrition":
+        if settings.rag_use_llm_query_rewrite:
+            return rewrite_nutrition_query(question), "llm"
+        return _lexical_query_rewrite(question, track), "lexical"
+    if settings.rag_use_llm_query_rewrite:
+        return rewrite_clinical_query(question), "llm"
+    return _lexical_query_rewrite(question, track), "lexical"
+
+
+def build_retrieval_summary(
+    contexts: list[dict[str, Any]],
+    *,
+    rewritten_query: str,
+    top_k: int,
+    use_live_tools: bool,
+    query_reformulation_mode: str = "lexical",
+    timings_ms: dict[str, float] | None = None,
+) -> dict[str, Any]:
+    """供 API / 前端展示的统一检索摘要。"""
+    return _retrieval_summary(
+        contexts,
+        rewritten_query=rewritten_query,
+        top_k=top_k,
+        use_live_tools=use_live_tools,
+        timings_ms=timings_ms,
+        query_reformulation_mode=query_reformulation_mode,
+    )
+
+
 def ask(
     question: str,
     track: str = "clinical",
@@ -307,12 +340,7 @@ def ask(
                 timings_ms=timings_ms,
             )
         rewrite_started = perf_counter()
-        if settings.rag_use_llm_query_rewrite:
-            rewritten = rewrite_nutrition_query(question)
-            rewrite_mode = "llm"
-        else:
-            rewritten = _lexical_query_rewrite(question, track)
-            rewrite_mode = "lexical"
+        rewritten, rewrite_mode = reformulate_query(question, track)
         timings_ms["query_reformulation_ms"] = round(
             (perf_counter() - rewrite_started) * 1000, 1
         )
@@ -320,12 +348,7 @@ def ask(
         prefer, boost = list(profile.prefer_levels) or None, list(profile.boost_tags) or None
     else:
         rewrite_started = perf_counter()
-        if settings.rag_use_llm_query_rewrite:
-            rewritten = rewrite_clinical_query(question)
-            rewrite_mode = "llm"
-        else:
-            rewritten = _lexical_query_rewrite(question, track)
-            rewrite_mode = "lexical"
+        rewritten, rewrite_mode = reformulate_query(question, track)
         timings_ms["query_reformulation_ms"] = round(
             (perf_counter() - rewrite_started) * 1000, 1
         )

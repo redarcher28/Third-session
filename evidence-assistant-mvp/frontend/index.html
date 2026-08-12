@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="x-ua-compatible" content="ie=edge" />
+  <title>证据智能助手 · OpenEvidence 风格</title>
+  <link rel="stylesheet" href="/frontend/styles.css" />
+  <link rel="stylesheet" href="/frontend/hero-carousel.css" />
+</head>
+
+<body class="home-page">
+  <div class="header-area" id="sticky-header">
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col-lg-3">
+          <div class="header-logo">
+            <a href="/" title="证据智能助手">
+              <span class="header-logo-text">Evidence Assistant 证据助手</span>
+            </a>
+          </div>
+        </div>
+        <div class="col-lg-9">
+          <button type="button" class="menu-toggle" id="menuToggle" aria-label="打开菜单">☰</button>
+          <div class="header-menu-wrap" id="headerMenuWrap">
+            <div class="header-menu">
+              <ul>
+                <li><a href="/" title="网站首页">网站首页</a></li>
+                <li class="menu-item-has-children">
+                  <a href="#" title="智能咨询">智能咨询<i class="fas fa-chevron-down"></i></a>
+                  <ul class="sub-menu">
+                    <li><a href="/consult?track=clinical" data-transition="true" title="临床证据助手">临床证据助手</a></li>
+                    <li><a href="/consult?track=nutrition" data-transition="true" title="健康营养助手">健康营养助手</a></li>
+                  </ul>
+                </li>
+                <li><a href="/eval" data-transition="true" title="RAG 评测">RAG 评测</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3D 医疗主题海报轮播 -->
+  <section class="hero-carousel-wrap" aria-label="首页海报轮播">
+    <div class="hero-carousel-viewport">
+      <div class="hero-carousel-track" id="heroCarouselTrack">
+
+        <!-- 海报 1：临床循证 -->
+        <article class="hero-poster-slide is-active" data-theme="clinical">
+          <div class="hero-poster-slide__card">
+            <div class="med-poster-layers">
+              <div class="med-poster-layers__base med-poster-layers__base--clinical"></div>
+              <div class="med-poster-layers__hex"></div>
+              <div class="med-poster-layers__dna" aria-hidden="true"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--1"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--2"></div>
+              <div class="med-poster-layers__particles"></div>
+              <div class="med-poster-layers__scan"></div>
+            </div>
+            <div class="med-poster-vignette med-poster-vignette--clinical"></div>
+            <div class="container hero-poster-slide__content">
+              <div class="hero-poster-copy">
+                <div class="hero-poster-meta">
+                  <span class="hero-poster-tag">赛道一 · 临床证据</span>
+                  <span class="med-chip">PubMed</span>
+                  <span class="med-chip">ClinicalTrials</span>
+                  <span class="med-chip med-chip--level">Level I–III</span>
+                </div>
+                <h2>精准临床<br><span class="hero-poster-accent">循证决策支持</span></h2>
+                <p>面向医学生与临床学习者的智能证据助手：混合检索 RCT、指南与 Meta 分析，ReAct 多步推理后输出带 [n] 引用与证据等级的结构化回答。</p>
+                <ul class="hero-poster-stats">
+                  <li><strong>15+</strong><span>知识库片段</span></li>
+                  <li><strong>4级</strong><span>证据分层</span></li>
+                  <li><strong>[n]</strong><span>引用校验</span></li>
+                </ul>
+                <a href="/consult?track=clinical" class="hero-poster-cta" data-transition="true">进入临床咨询</a>
+              </div>
+              <div class="med-composition med-composition--clinical" aria-hidden="true">
+                <div class="med-composition__ring med-composition__ring--1"></div>
+                <div class="med-composition__ring med-composition__ring--2"></div>
+                <div class="med-composition__art" role="img" aria-label="临床监护与证据检索场景"></div>
+                <div class="med-float-badge med-float-badge--1"><span class="med-float-badge__icon">+</span><span>HIPAA Demo</span></div>
+                <div class="med-float-badge med-float-badge--2"><span class="med-float-badge__val">98.6</span><span>°C 体温监测</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 海报 2：营养医学 -->
+        <article class="hero-poster-slide" data-theme="nutrition">
+          <div class="hero-poster-slide__card">
+            <div class="med-poster-layers">
+              <div class="med-poster-layers__base med-poster-layers__base--nutrition"></div>
+              <div class="med-poster-layers__hex med-poster-layers__hex--green"></div>
+              <div class="med-poster-layers__molecule" aria-hidden="true"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--1"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--3"></div>
+              <div class="med-poster-layers__particles"></div>
+            </div>
+            <div class="med-poster-vignette med-poster-vignette--nutrition"></div>
+            <div class="container hero-poster-slide__content">
+              <div class="hero-poster-copy">
+                <div class="hero-poster-meta">
+                  <span class="hero-poster-tag">赛道二 · 营养医学</span>
+                  <span class="med-chip">DASH</span>
+                  <span class="med-chip">地中海饮食</span>
+                  <span class="med-chip">控钠控糖</span>
+                </div>
+                <h2>营养干预<br><span class="hero-poster-accent hero-poster-accent--green">科学膳食方案</span></h2>
+                <p>将 Cochrane 系统评价与膳食指南转化为易懂科普，宏量营养素配比、血糖曲线与 CVD 风险比（RR）均可追溯至 Wiki 主题页与文献片段。</p>
+                <ul class="hero-poster-stats">
+                  <li><strong>6+</strong><span>Wiki 主题</span></li>
+                  <li><strong>RR</strong><span>效应量引用</span></li>
+                  <li><strong>DASH</strong><span>指南对齐</span></li>
+                </ul>
+                <a href="/consult?track=nutrition" class="hero-poster-cta hero-poster-cta--green" data-transition="true">进入营养咨询</a>
+              </div>
+              <div class="med-composition med-composition--nutrition" aria-hidden="true">
+                <div class="med-composition__ring med-composition__ring--1"></div>
+                <div class="med-composition__art" role="img" aria-label="营养膳食与分子场景"></div>
+                <div class="med-float-badge med-float-badge--3"><span class="med-float-badge__val">2300</span><span>mg 钠上限</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 海报 3：ReAct 智能体 -->
+        <article class="hero-poster-slide" data-theme="react">
+          <div class="hero-poster-slide__card">
+            <div class="med-poster-layers">
+              <div class="med-poster-layers__base med-poster-layers__base--react"></div>
+              <div class="med-poster-layers__hex med-poster-layers__hex--blue"></div>
+              <div class="med-poster-layers__grid3d" aria-hidden="true"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--2"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--4"></div>
+              <div class="med-poster-layers__scan"></div>
+            </div>
+            <div class="med-poster-vignette med-poster-vignette--react"></div>
+            <div class="container hero-poster-slide__content">
+              <div class="hero-poster-copy">
+                <div class="hero-poster-meta">
+                  <span class="hero-poster-tag">ReAct · 智能体</span>
+                  <span class="med-chip">Thought</span>
+                  <span class="med-chip">Action</span>
+                  <span class="med-chip">Observation</span>
+                </div>
+                <h2>多步推理<br><span class="hero-poster-accent hero-poster-accent--blue">医学证据检索链</span></h2>
+                <p>Thought → retrieve_evidence → search_pubmed → search_trials → finish：五步内完成本地 Chroma 混合检索与在线补全，推理过程在咨询页右侧实时可见。</p>
+                <ul class="hero-poster-stats">
+                  <li><strong>5</strong><span>最大步数</span></li>
+                  <li><strong>3</strong><span>检索工具</span></li>
+                  <li><strong>BM25</strong><span>+ Vector</span></li>
+                </ul>
+                <a href="/consult?track=clinical" class="hero-poster-cta hero-poster-cta--blue" data-transition="true">体验 ReAct 推理</a>
+              </div>
+              <div class="med-composition med-composition--react" aria-hidden="true">
+                <div class="med-composition__ring med-composition__ring--2"></div>
+                <div class="med-composition__art" role="img" aria-label="ReAct 推理链场景"></div>
+                <div class="med-float-badge med-float-badge--1"><span class="med-float-badge__val">Step 3</span><span>/5 ReAct</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- 海报 4：RAG 评测 -->
+        <article class="hero-poster-slide" data-theme="eval">
+          <div class="hero-poster-slide__card">
+            <div class="med-poster-layers">
+              <div class="med-poster-layers__base med-poster-layers__base--eval"></div>
+              <div class="med-poster-layers__hex med-poster-layers__hex--purple"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--1"></div>
+              <div class="med-poster-layers__orb med-poster-layers__orb--5"></div>
+              <div class="med-poster-layers__particles med-poster-layers__particles--purple"></div>
+              <div class="med-poster-layers__cross" aria-hidden="true"></div>
+            </div>
+            <div class="med-poster-vignette med-poster-vignette--eval"></div>
+            <div class="container hero-poster-slide__content">
+              <div class="hero-poster-copy">
+                <div class="hero-poster-meta">
+                  <span class="hero-poster-tag">赛道三 · 质量评测</span>
+                  <span class="med-chip">Baseline</span>
+                  <span class="med-chip">RAG</span>
+                  <span class="med-chip med-chip--warn">假引用检测</span>
+                </div>
+                <h2>循证质量<br><span class="hero-poster-accent hero-poster-accent--purple">RAG 对比评测</span></h2>
+                <p>12 题统一 Benchmark：对比纯 LLM 与 RAG 管道在假引用率、要点覆盖率与拒答题上的表现，支撑课程答辩与 benchmark_summary.md 报告导出。</p>
+                <ul class="hero-poster-stats">
+                  <li><strong>12</strong><span>测试题</span></li>
+                  <li><strong>2</strong><span>对比模式</span></li>
+                  <li><strong>JSON</strong><span>结果导出</span></li>
+                </ul>
+                <a href="/eval" class="hero-poster-cta hero-poster-cta--purple" data-transition="true">运行 Benchmark</a>
+              </div>
+              <div class="med-composition med-composition--eval" aria-hidden="true">
+                <div class="med-composition__ring med-composition__ring--1"></div>
+                <div class="med-composition__art" role="img" aria-label="RAG 评测场景"></div>
+                <div class="med-float-badge med-float-badge--2"><span class="med-float-badge__val">92%</span><span>拒答准确</span></div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </div>
+    <button type="button" class="hero-carousel-arrow hero-carousel-arrow--prev" aria-label="上一张海报">‹</button>
+    <button type="button" class="hero-carousel-arrow hero-carousel-arrow--next" aria-label="下一张海报">›</button>
+    <div class="hero-carousel-dots" id="heroCarouselDots" role="tablist" aria-label="海报指示器"></div>
+  </section>
+
+  <main class="container main-after-hero home-main">
+    <section class="card-grid">
+      <a href="/consult?track=clinical" class="entry-card-link" data-transition="true" title="临床证据助手">
+        <div class="flip-box">
+          <div class="flip-box-inner">
+            <div class="flip-box-front">
+              <div class="flip-box-icon">🩺</div>
+              <h3>临床证据助手</h3>
+              <p>结构化回答 + 证据等级 + 引用校验</p>
+            </div>
+            <div class="flip-box-back">
+              <div class="flip-box-icon">🩺</div>
+              <h3>临床证据助手</h3>
+              <p>面向医学生与临床学习者，优先 RCT/指南/Meta 分析级证据。</p>
+            </div>
+          </div>
+        </div>
+      </a>
+      <a href="/consult?track=nutrition" class="entry-card-link" data-transition="true" title="健康营养助手">
+        <div class="flip-box">
+          <div class="flip-box-inner">
+            <div class="flip-box-front">
+              <div class="flip-box-icon">🥗</div>
+              <h3>健康营养助手</h3>
+              <p>通俗科普 + 同一知识库可追溯引用</p>
+            </div>
+            <div class="flip-box-back">
+              <div class="flip-box-icon">🥗</div>
+              <h3>健康营养助手</h3>
+              <p>DASH、地中海饮食、控钠控糖等主题，回答更易懂仍带 [n] 引用。</p>
+            </div>
+          </div>
+        </div>
+      </a>
+      <a href="/eval" class="entry-card-link" data-transition="true" title="RAG 评测">
+        <div class="flip-box">
+          <div class="flip-box-inner">
+            <div class="flip-box-front">
+              <div class="flip-box-icon">📊</div>
+              <h3>RAG vs Baseline</h3>
+              <p>假引用率、覆盖率与拒答对比</p>
+            </div>
+            <div class="flip-box-back">
+              <div class="flip-box-icon">📊</div>
+              <h3>RAG vs Baseline</h3>
+              <p>统一测试集上对比纯 LLM 与 RAG 管道，导出评测报告。</p>
+            </div>
+          </div>
+        </div>
+      </a>
+      <a href="http://127.0.0.1:8501" class="entry-card-link" rel="noopener noreferrer" target="_blank" title="Streamlit 演示">
+        <div class="flip-box">
+          <div class="flip-box-inner">
+            <div class="flip-box-front">
+              <div class="flip-box-icon">⚙️</div>
+              <h3>Streamlit 演示</h3>
+              <p>三 Tab 完整演示界面（需单独启动）</p>
+            </div>
+            <div class="flip-box-back">
+              <div class="flip-box-icon">⚙️</div>
+              <h3>Streamlit 演示</h3>
+              <p>运行 streamlit run src/app/ui.py 打开高级演示面板。</p>
+            </div>
+          </div>
+        </div>
+      </a>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-grid">
+      <div>
+        <h4>证据智能助手</h4>
+        <p>仅供学习与演示，不构成医疗建议，不用于真实诊疗。引用请人工复核。</p>
+      </div>
+      <div>
+        <h4>功能入口</h4>
+        <a href="/consult?track=clinical">临床咨询</a>
+        <a href="/consult?track=nutrition">营养咨询</a>
+        <a href="/eval">评测面板</a>
+      </div>
+      <div>
+        <h4>技术栈</h4>
+        <a href="#">ReAct + RAG</a>
+        <a href="#">Chroma 混合检索</a>
+        <a href="#">FastAPI Web</a>
+      </div>
+    </div>
+    <div class="copyright">Evidence Assistant MVP · 暑期实践智能体项目</div>
+  </footer>
+
+  <script src="/frontend/main.js"></script>
+  <script src="/frontend/hero-carousel.js"></script>
+</body>
+
+</html>
